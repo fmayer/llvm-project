@@ -1,0 +1,70 @@
+#!/bin/sh -xe
+
+shopt -s globstar
+
+# There should be a file frankendroid.rc in the monorepo root with contents:
+# androiddir=<Path to your android root directory>
+# builddir=<Name of build directory in monorepo root>
+# llvm_androiddir=<Path to result of "git clone https://android.googlesource.com/toolchain/llvm_android">
+cd $(dirname $0)/../..
+. ./frankendroid.rc
+
+# Work around crbug.com/gn/96
+rm -f $builddir/stage2_*/**/*.o
+
+ninja -C $builddir hwasan compiler-rt libunwind llvm-objcopy libclang
+
+treename=$(basename $(pwd))
+treepath=$androiddir/prebuilts/clang/host/linux-x86/${treename}.new
+treepath_dest=$androiddir/prebuilts/clang/host/linux-x86/${treename}
+builddirver=$(grep CLANG_VERSION_STRING $builddir/gen/clang/include/clang/Basic/Version.inc | cut -d\" -f2)
+
+ver=$(grep 'ClangDefaultVersion.*=' $androiddir/build/soong/cc/config/global.go | cut -d\" -f2)
+shortver=$(grep 'ClangDefaultShortVersion.*=' $androiddir/build/soong/cc/config/global.go | cut -d\" -f2)
+majorver=$(echo $shortver | cut -d. -f1)
+origpath=$androiddir/prebuilts/clang/host/linux-x86/$ver
+
+rm -rf $treepath
+cp -r $origpath $treepath
+mkdir $treepath/bin.real
+cp $builddir/bin/clang $treepath/bin.real/clang
+cp $builddir/bin/clang $treepath/bin/clang-$majorver
+cp $builddir/bin/clang $treepath/bin/clang.real
+ln -sf clang $treepath/bin.real/clang++
+ln -sf ../bin/ld.lld $treepath/bin.real/ld.lld
+cflags='-w -Wno-invalid-partial-specialization'
+echo '#!/bin/sh
+exec '$treepath_dest'/bin.real/clang "$@" '$cflags > $treepath/bin/clang
+echo '#!/bin/sh
+exec '$treepath_dest'/bin.real/clang++ "$@" '$cflags > $treepath/bin/clang++
+echo '#!/bin/sh
+exit 0' > $treepath/bin/clang-tidy
+
+cp $builddir/bin/lld $treepath/bin/ld.lld
+cp $builddir/bin/llvm-ar $treepath/bin/llvm-ar
+cp $builddir/bin/llvm-objcopy $treepath/bin/llvm-objcopy
+
+cp $builddir/lib/libclang.so $treepath/lib64/libclang.so.${majorver}git
+
+mv $treepath/lib64/clang/$shortver/include/omp.h $treepath/lib64/clang/$shortver/omp.h.bak
+rm -rf $treepath/lib64/clang/$shortver/include
+cp -r $builddir/lib/clang/$builddirver/include $treepath/lib64/clang/$shortver/
+mv $treepath/lib64/clang/$shortver/omp.h.bak $treepath/lib64/clang/$shortver/include/omp.h
+
+mkdir $treepath/lib64/clang/$shortver/include/bits
+cp $androiddir/bionic/libc/include/stdatomic.h $treepath/lib64/clang/$shortver/include/
+cp $androiddir/bionic/libc/include/bits/stdatomic.h $treepath/lib64/clang/$shortver/include/bits/
+
+cp -r $builddir/lib/clang/$builddirver/lib/linux/* $treepath/lib64/clang/$shortver/lib/linux/
+python3 $llvm_androiddir/mapfile.py $treepath/lib64/clang/$shortver/lib/linux/libclang_rt.hwasan-aarch64-android.so $treepath/lib64/clang/$shortver/lib/linux/libclang_rt.hwasan-aarch64-android.map.txt
+
+if [ -e $treepath/lib ] ; then
+  mv $treepath/lib/* $treepath/lib64/
+  rmdir $treepath/lib
+fi
+
+ln -s lib64 $treepath/lib
+ln -s $shortver $treepath/lib64/clang/$builddirver
+
+rsync -vcrl --delete $treepath/ $treepath_dest
+rm -rf $treepath
