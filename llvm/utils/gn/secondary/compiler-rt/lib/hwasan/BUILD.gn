@@ -34,7 +34,9 @@ action("version_script") {
 source_set("sources") {
   configs -= [ "//llvm/utils/gn/build:llvm_code" ]
   configs += [ "//llvm/utils/gn/build:crt_code" ]
-  defines = [ "HWASAN_WITH_INTERCEPTORS=1" ]
+  if (current_os != "android") {
+    defines = [ "HWASAN_WITH_INTERCEPTORS=1" ]
+  }
   if (current_cpu == "x64") {
     defines += [ "HWASAN_ALIASING_MODE" ]
   }
