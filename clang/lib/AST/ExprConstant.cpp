@@ -5999,9 +5999,11 @@ static bool HandleUnionActiveMemberChange(EvalInfo &Info, const Expr *LHSExpr,
 
       E = ME->getBase();
       --PathLength;
+#if 0
       assert(declaresSameEntity(FD,
                                 LHS.Designator.Entries[PathLength]
                                     .getAsBaseOrMember().getPointer()));
+#endif
 
       //   -- If E is of the form A[B] and is interpreted as a built-in array
       //      subscripting operator, S(E) is [S(the array operand, if any)].
