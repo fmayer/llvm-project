@@ -18,8 +18,11 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/GlobalsModRef.h"
+#include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/PostDominators.h"
+#include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/StackSafetyAnalysis.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/BinaryFormat/ELF.h"
@@ -54,7 +57,9 @@
 #include "llvm/Transforms/Utils/MemoryTaggingSupport.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 #include "llvm/Transforms/Utils/PromoteMemToReg.h"
+#include <algorithm>
 #include <optional>
+#include <sstream>
 
 using namespace llvm;
 
@@ -231,6 +236,11 @@ static cl::opt<bool> ClUsePageAliases("hwasan-experimental-use-page-aliases",
                                       cl::desc("Use page aliasing in HWASan"),
                                       cl::Hidden, cl::init(false));
 
+// Enabled from clang by "-fsanitize-hwaddress-experimental-aliasing".
+static cl::opt<bool> ClUAFOnly("hwasan-uaf-only",
+                               cl::desc("Use page aliasing in HWASan"),
+                               cl::Hidden, cl::init(false));
+
 namespace {
 
 bool shouldUsePageAliases(const Triple &TargetTriple) {
@@ -261,6 +271,126 @@ bool shouldUseStackSafetyAnalysis(const Triple &TargetTriple,
 bool shouldDetectUseAfterScope(const Triple &TargetTriple) {
   return ClUseAfterScope && shouldInstrumentStack(TargetTriple);
 }
+
+CallBase *findAllocForValue(Value *V, bool OffsetZero, const TargetLibraryInfo& TLI) {
+  CallBase *Result = nullptr;
+  SmallPtrSet<Value *, 4> Visited;
+  SmallVector<Value *, 4> Worklist;
+
+  auto AddWork = [&](Value *V) {
+    if (Visited.insert(V).second)
+      Worklist.push_back(V);
+  };
+
+  AddWork(V);
+  do {
+    V = Worklist.pop_back_val();
+    assert(Visited.count(V));
+
+    if (isa<ConstantPointerNull>(V)) {
+      continue;
+    } else if (CastInst *CI = dyn_cast<CastInst>(V)) {
+      AddWork(CI->getOperand(0));
+    } else if (PHINode *PN = dyn_cast<PHINode>(V)) {
+      for (Value *IncValue : PN->incoming_values())
+        AddWork(IncValue);
+    } else if (auto *SI = dyn_cast<SelectInst>(V)) {
+      AddWork(SI->getTrueValue());
+      AddWork(SI->getFalseValue());
+    } else if (GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(V)) {
+      if (OffsetZero && !GEP->hasAllZeroIndices())
+        return nullptr;
+      AddWork(GEP->getPointerOperand());
+    } else if (CallBase *CB = dyn_cast<CallBase>(V)) {
+      Value *Returned = CB->getReturnedArgOperand();
+      if (Returned) {
+        AddWork(Returned);
+      } else {
+        if (!isAllocLikeFn(CB, &TLI))
+          continue;
+        if (Result && Result != CB) {
+          return nullptr;
+        }
+        Result = CB;
+      }
+    } else {
+      return nullptr;
+    }
+  } while (!Worklist.empty());
+
+  return Result;
+}
+
+bool canNotBeTracedTo(const Value *From, const Value *To) {
+  SmallPtrSet<const Value *, 4> Visited;
+  SmallVector<const Value *, 4> Worklist;
+
+  auto AddWork = [&](const Value *V) {
+    if (Visited.insert(V).second)
+      Worklist.push_back(V);
+  };
+
+  AddWork(From);
+  do {
+    const Value *V = Worklist.pop_back_val();
+    assert(Visited.count(V));
+
+    if (V == To)
+      return false;
+    if (const CastInst *CI = dyn_cast<CastInst>(V)) {
+      AddWork(CI->getOperand(0));
+    } else if (const PHINode *PN = dyn_cast<PHINode>(V)) {
+      for (const Value *IncValue : PN->incoming_values())
+        AddWork(IncValue);
+    } else if (auto *SI = dyn_cast<SelectInst>(V)) {
+      AddWork(SI->getTrueValue());
+      AddWork(SI->getFalseValue());
+    } else if (const GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(V)) {
+      if (!GEP->hasAllZeroIndices())
+        return false;
+      AddWork(GEP->getPointerOperand());
+    } else if (const CallBase *CB = dyn_cast<CallBase>(V)) {
+      Value *Returned = CB->getReturnedArgOperand();
+      if (Returned) {
+        AddWork(Returned);
+      } else {
+        Function *F = CB->getCalledFunction();
+        if (!F || !F->onlyAccessesInaccessibleMemOrArgMem())
+          return false;
+        for (auto &Arg : CB->args()) {
+          AddWork(Arg);
+        }
+      }
+    } else {
+      return false;
+    }
+  } while (!Worklist.empty());
+
+  return true;
+}
+
+bool neverFrees(const CallBase &CB) {
+  Function *F = CB.getCalledFunction();
+  if (!F)
+    return false;
+  return F->doesNotFreeMemory();
+}
+
+bool mightFree(const CallBase &CB, const Value &V) {
+  if (neverFrees(CB))
+    return false;
+  Function *F = CB.getCalledFunction();
+  if (!F->onlyAccessesInaccessibleMemOrArgMem())
+    return true;
+  return llvm::any_of(CB.args(),
+                      [&](auto &A) { return !canNotBeTracedTo(A, &V); });
+}
+
+struct HeapSafetyInfo {
+  const DominatorTree &DT;
+  const TargetLibraryInfo& TLI;
+  const SmallVectorImpl<CallBase *> &MightFree;
+};
 
 /// An instrumentation pass implementing detection of addressability bugs
 /// using tagged pointers.
@@ -311,12 +441,13 @@ private:
   void instrumentMemAccessInline(Value *Ptr, bool IsWrite,
                                  unsigned AccessSizeIndex,
                                  Instruction *InsertBefore);
-  bool ignoreMemIntrinsic(MemIntrinsic *MI);
+  bool ignoreMemIntrinsic(MemIntrinsic *MI, const HeapSafetyInfo &HSI);
   void instrumentMemIntrinsic(MemIntrinsic *MI);
   bool instrumentMemAccess(InterestingMemoryOperand &O);
-  bool ignoreAccess(Instruction *Inst, Value *Ptr);
+  bool ignoreAccess(Instruction *Inst, Value *Ptr, const HeapSafetyInfo &HSI);
   void getInterestingMemoryOperands(
-      Instruction *I, SmallVectorImpl<InterestingMemoryOperand> &Interesting);
+      Instruction *I, SmallVectorImpl<InterestingMemoryOperand> &Interesting,
+      const HeapSafetyInfo &HSI);
 
   void tagAlloca(IRBuilder<> &IRB, AllocaInst *AI, Value *Tag, size_t Size);
   Value *tagPointer(IRBuilder<> &IRB, Type *Ty, Value *PtrLong, Value *Tag);
@@ -745,12 +876,15 @@ Value *HWAddressSanitizer::getShadowNonTls(IRBuilder<> &IRB) {
   return IRB.CreateLoad(Int8PtrTy, GlobalDynamicAddress);
 }
 
-bool HWAddressSanitizer::ignoreAccess(Instruction *Inst, Value *Ptr) {
+bool HWAddressSanitizer::ignoreAccess(Instruction *Inst, Value *Ptr,
+                                      const HeapSafetyInfo &HSI) {
   // Do not instrument accesses from different address spaces; we cannot deal
   // with them.
   Type *PtrTy = cast<PointerType>(Ptr->getType()->getScalarType());
   if (PtrTy->getPointerAddressSpace() != 0)
     return true;
+  auto TypeSize  = M.getDataLayout().getTypeStoreSize(Ptr->getType());
+
 
   // Ignore swifterror addresses.
   // swifterror memory addresses are mem2reg promoted by instruction
@@ -765,11 +899,25 @@ bool HWAddressSanitizer::ignoreAccess(Instruction *Inst, Value *Ptr) {
     if (SSI && SSI->stackAccessIsSafe(*Inst))
       return true;
   }
+  if (!ClUAFOnly)
+    return false;
+  if (CallBase *Alloc = findAllocForValue(Ptr, false, HSI.TLI)) {
+    for (const auto &CB : HSI.MightFree) {
+      if (!isPotentiallyReachable(CB, Inst, nullptr, &HSI.DT))
+        continue;
+      if (mightFree(*CB, *Alloc))
+        return false;
+      auto Size = Alloc->getCalledFunction()->getFnAttribute(Attribute::AllocSize);
+    }
+    dbgs() << "HWASAN-IGNORE-ACCESS\n";
+    return true;
+  }
   return false;
 }
 
 void HWAddressSanitizer::getInterestingMemoryOperands(
-    Instruction *I, SmallVectorImpl<InterestingMemoryOperand> &Interesting) {
+    Instruction *I, SmallVectorImpl<InterestingMemoryOperand> &Interesting,
+    const HeapSafetyInfo &HSI) {
   // Skip memory accesses inserted by another instrumentation.
   if (I->hasMetadata(LLVMContext::MD_nosanitize))
     return;
@@ -779,22 +927,22 @@ void HWAddressSanitizer::getInterestingMemoryOperands(
     return;
 
   if (LoadInst *LI = dyn_cast<LoadInst>(I)) {
-    if (!ClInstrumentReads || ignoreAccess(I, LI->getPointerOperand()))
+    if (!ClInstrumentReads || ignoreAccess(I, LI->getPointerOperand(), HSI))
       return;
     Interesting.emplace_back(I, LI->getPointerOperandIndex(), false,
                              LI->getType(), LI->getAlign());
   } else if (StoreInst *SI = dyn_cast<StoreInst>(I)) {
-    if (!ClInstrumentWrites || ignoreAccess(I, SI->getPointerOperand()))
+    if (!ClInstrumentWrites || ignoreAccess(I, SI->getPointerOperand(), HSI))
       return;
     Interesting.emplace_back(I, SI->getPointerOperandIndex(), true,
                              SI->getValueOperand()->getType(), SI->getAlign());
   } else if (AtomicRMWInst *RMW = dyn_cast<AtomicRMWInst>(I)) {
-    if (!ClInstrumentAtomics || ignoreAccess(I, RMW->getPointerOperand()))
+    if (!ClInstrumentAtomics || ignoreAccess(I, RMW->getPointerOperand(), HSI))
       return;
     Interesting.emplace_back(I, RMW->getPointerOperandIndex(), true,
                              RMW->getValOperand()->getType(), std::nullopt);
   } else if (AtomicCmpXchgInst *XCHG = dyn_cast<AtomicCmpXchgInst>(I)) {
-    if (!ClInstrumentAtomics || ignoreAccess(I, XCHG->getPointerOperand()))
+    if (!ClInstrumentAtomics || ignoreAccess(I, XCHG->getPointerOperand(), HSI))
       return;
     Interesting.emplace_back(I, XCHG->getPointerOperandIndex(), true,
                              XCHG->getCompareOperand()->getType(),
@@ -802,7 +950,7 @@ void HWAddressSanitizer::getInterestingMemoryOperands(
   } else if (auto *CI = dyn_cast<CallInst>(I)) {
     for (unsigned ArgNo = 0; ArgNo < CI->arg_size(); ArgNo++) {
       if (!ClInstrumentByval || !CI->isByValArgument(ArgNo) ||
-          ignoreAccess(I, CI->getArgOperand(ArgNo)))
+          ignoreAccess(I, CI->getArgOperand(ArgNo), HSI))
         continue;
       Type *Ty = CI->getParamByValType(ArgNo);
       Interesting.emplace_back(I, ArgNo, false, Ty, Align(1));
@@ -983,13 +1131,14 @@ void HWAddressSanitizer::instrumentMemAccessInline(Value *Ptr, bool IsWrite,
         ->setSuccessor(0, TCI.TagMismatchTerm->getParent());
 }
 
-bool HWAddressSanitizer::ignoreMemIntrinsic(MemIntrinsic *MI) {
+bool HWAddressSanitizer::ignoreMemIntrinsic(MemIntrinsic *MI,
+                                            const HeapSafetyInfo &HSI) {
   if (MemTransferInst *MTI = dyn_cast<MemTransferInst>(MI)) {
-    return (!ClInstrumentWrites || ignoreAccess(MTI, MTI->getDest())) &&
-           (!ClInstrumentReads || ignoreAccess(MTI, MTI->getSource()));
+    return (!ClInstrumentWrites || ignoreAccess(MTI, MTI->getDest(), HSI)) &&
+           (!ClInstrumentReads || ignoreAccess(MTI, MTI->getSource(), HSI));
   }
   if (isa<MemSetInst>(MI))
-    return !ClInstrumentWrites || ignoreAccess(MI, MI->getDest());
+    return !ClInstrumentWrites || ignoreAccess(MI, MI->getDest(), HSI);
   return false;
 }
 
@@ -1477,8 +1626,18 @@ void HWAddressSanitizer::sanitizeFunction(Function &F,
   SmallVector<InterestingMemoryOperand, 16> OperandsToInstrument;
   SmallVector<MemIntrinsic *, 16> IntrinToInstrument;
   SmallVector<Instruction *, 8> LandingPadVec;
-
+  SmallVector<CallBase *, 16> MightFree;
   memtag::StackInfoBuilder SIB(SSI);
+  for (auto &Inst : instructions(F)) {
+    if (CallBase *CI = dyn_cast<CallBase>(&Inst)) {
+      if (!neverFrees(*CI)) {
+        MightFree.push_back(CI);
+      }
+    }
+  }
+  const DominatorTree &DT = FAM.getResult<DominatorTreeAnalysis>(F);
+  auto &TLI = FAM.getResult<TargetLibraryAnalysis>(F);
+  HeapSafetyInfo HSI{DT, TLI, MightFree};
   for (auto &Inst : instructions(F)) {
     if (InstrumentStack) {
       SIB.visit(Inst);
@@ -1487,10 +1646,10 @@ void HWAddressSanitizer::sanitizeFunction(Function &F,
     if (InstrumentLandingPads && isa<LandingPadInst>(Inst))
       LandingPadVec.push_back(&Inst);
 
-    getInterestingMemoryOperands(&Inst, OperandsToInstrument);
+    getInterestingMemoryOperands(&Inst, OperandsToInstrument, HSI);
 
     if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(&Inst))
-      if (!ignoreMemIntrinsic(MI))
+      if (!ignoreMemIntrinsic(MI, HSI))
         IntrinToInstrument.push_back(MI);
   }
 
@@ -1522,7 +1681,6 @@ void HWAddressSanitizer::sanitizeFunction(Function &F,
                    !SInfo.AllocasToInstrument.empty());
 
   if (!SInfo.AllocasToInstrument.empty()) {
-    const DominatorTree &DT = FAM.getResult<DominatorTreeAnalysis>(F);
     const PostDominatorTree &PDT = FAM.getResult<PostDominatorTreeAnalysis>(F);
     const LoopInfo &LI = FAM.getResult<LoopAnalysis>(F);
     Value *StackTag = getStackBaseTag(EntryIRB);
@@ -1668,9 +1826,9 @@ void HWAddressSanitizer::instrumentGlobals() {
     // Don't allow globals to be tagged with something that looks like a
     // short-granule tag, otherwise we lose inter-granule overflow detection, as
     // the fast path shadow-vs-address check succeeds.
-    if (Tag < 16 || Tag > TagMaskByte)
-      Tag = 16;
-    instrumentGlobal(GV, Tag++);
+    if (Tag > TagMaskByte - 16)
+      Tag = 0;
+    instrumentGlobal(GV, 16 + Tag++);
   }
 }
 
