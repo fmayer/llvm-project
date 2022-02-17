@@ -141,6 +141,36 @@ void alignAndPadAlloca(memtag::AllocaInfo &Info, llvm::Align Alignment) {
   Info.AI->eraseFromParent();
   Info.AI = NewAI;
 }
+void tagLifetimes(const StackInfo &SInfo, AllocaInfo &Info,
+                  bool ShouldDetectUseAfterScope, size_t MaxLifetimes,
+                  const DominatorTree &DT, const PostDominatorTree &PDT,
+                  llvm::function_ref<void(Instruction *, uint64_t)> TagStart,
+                  llvm::function_ref<void(Instruction *, uint64_t)> TagEnd) {
+  bool StandardLifetime =
+      SInfo.UnrecognizedLifetimes.empty() &&
+      memtag::isStandardLifetime(Info.LifetimeStart, Info.LifetimeEnd, &DT,
+                                 MaxLifetimes);
+  if (ShouldDetectUseAfterScope && StandardLifetime) {
+    IntrinsicInst *Start = Info.LifetimeStart[0];
+    uint64_t Size = cast<ConstantInt>(Start->getArgOperand(0))->getZExtValue();
+    TagStart(Start->getNextNode(), Size);
+    if (!memtag::forAllReachableExits(
+            DT, PDT, Start, Info.LifetimeEnd, SInfo.RetVec,
+            [&](Instruction *End) { TagEnd(End, Size); })) {
+      for (auto *End : Info.LifetimeEnd)
+        End->eraseFromParent();
+    }
+  } else {
+    size_t Size = memtag::getAllocaSizeInBytes(*Info.AI);
+    TagStart(nullptr, Size);
+    for (auto *RI : SInfo.RetVec)
+      TagEnd(RI, Size);
+    for (auto &II : Info.LifetimeStart)
+      II->eraseFromParent();
+    for (auto &II : Info.LifetimeEnd)
+      II->eraseFromParent();
+  }
+}
 
 } // namespace memtag
 } // namespace llvm

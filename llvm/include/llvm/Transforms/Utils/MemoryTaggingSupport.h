@@ -12,10 +12,12 @@
 #ifndef LLVM_TRANSFORMS_UTILS_MEMORYTAGGINGSUPPORT_H
 #define LLVM_TRANSFORMS_UTILS_MEMORYTAGGINGSUPPORT_H
 
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/CFG.h"
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include <cstdint>
 
 namespace llvm {
 class DominatorTree;
@@ -101,6 +103,12 @@ private:
 
 uint64_t getAllocaSizeInBytes(const AllocaInst &AI);
 void alignAndPadAlloca(memtag::AllocaInfo &Info, llvm::Align Align);
+
+void tagLifetimes(const StackInfo &SInfo, AllocaInfo &Info,
+                  bool ShouldDetectUseAfterScope, size_t MaxLifetimes,
+                  const DominatorTree &DT, const PostDominatorTree &PDT,
+                  llvm::function_ref<void(Instruction *, uint64_t)> TagStart,
+                  llvm::function_ref<void(Instruction *, uint64_t)> TagEnd);
 
 } // namespace memtag
 } // namespace llvm

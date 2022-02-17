@@ -1346,38 +1346,19 @@ bool HWAddressSanitizer::instrumentStack(
                                                           NewOps, LocNo));
     }
 
-    size_t Size = memtag::getAllocaSizeInBytes(*AI);
-    size_t AlignedSize = alignTo(Size, Mapping.getObjectAlignment());
-    auto TagEnd = [&](Instruction *Node) {
+    auto TagEnd = [&](Instruction *Node, uint64_t Size) {
       IRB.SetInsertPoint(Node);
       Value *UARTag = getUARTag(IRB, StackTag);
-      tagAlloca(IRB, AI, UARTag, AlignedSize);
+      tagAlloca(IRB, AI, UARTag, Size);
     };
-    bool StandardLifetime =
-        SInfo.UnrecognizedLifetimes.empty() &&
-        memtag::isStandardLifetime(Info.LifetimeStart, Info.LifetimeEnd,
-                                   &GetDT(), ClMaxLifetimes);
-    if (ShouldDetectUseAfterScope && StandardLifetime) {
-      IntrinsicInst *Start = Info.LifetimeStart[0];
-      IRB.SetInsertPoint(Start->getNextNode());
+    auto TagStart = [&](Instruction *Node, uint64_t Size) {
+      if (Node)
+        IRB.SetInsertPoint(Node);
       tagAlloca(IRB, AI, Tag, Size);
-      if (!memtag::forAllReachableExits(GetDT(), GetPDT(), Start,
-                                        Info.LifetimeEnd, SInfo.RetVec,
-                                        TagEnd)) {
-        for (auto *End : Info.LifetimeEnd)
-          End->eraseFromParent();
-      }
-    } else {
-      tagAlloca(IRB, AI, Tag, Size);
-      for (auto *RI : SInfo.RetVec)
-        TagEnd(RI);
-      // We inserted tagging outside of the lifetimes, so we have to remove
-      // them.
-      for (auto &II : Info.LifetimeStart)
-        II->eraseFromParent();
-      for (auto &II : Info.LifetimeEnd)
-        II->eraseFromParent();
-    }
+    };
+
+    memtag::tagLifetimes(SInfo, Info, ShouldDetectUseAfterScope, ClMaxLifetimes,
+                         GetDT(), GetPDT(), TagStart, TagEnd);
     memtag::alignAndPadAlloca(Info, Align(Mapping.getObjectAlignment()));
   }
   for (auto &I : SInfo.UnrecognizedLifetimes)

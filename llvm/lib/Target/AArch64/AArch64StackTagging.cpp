@@ -549,44 +549,16 @@ bool AArch64StackTagging::runOnFunction(Function &Fn) {
     Info.AI->replaceAllUsesWith(TagPCall);
     TagPCall->setOperand(0, Info.AI);
 
-    bool StandardLifetime =
-        SInfo.UnrecognizedLifetimes.empty() &&
-        memtag::isStandardLifetime(Info.LifetimeStart, Info.LifetimeEnd, DT,
-                                   ClMaxLifetimes);
-    // Calls to functions that may return twice (e.g. setjmp) confuse the
-    // postdominator analysis, and will leave us to keep memory tagged after
-    // function return. Work around this by always untagging at every return
-    // statement if return_twice functions are called.
-    if (SInfo.UnrecognizedLifetimes.empty() && StandardLifetime &&
-        !SInfo.CallsReturnTwice) {
-      IntrinsicInst *Start = Info.LifetimeStart[0];
-      uint64_t Size =
-          cast<ConstantInt>(Start->getArgOperand(0))->getZExtValue();
-      Size = alignTo(Size, kTagGranuleSize);
-      tagAlloca(AI, Start->getNextNode(), Start->getArgOperand(1), Size);
 
-      auto TagEnd = [&](Instruction *Node) { untagAlloca(AI, Node, Size); };
-      if (!DT || !PDT ||
-          !memtag::forAllReachableExits(*DT, *PDT, Start, Info.LifetimeEnd,
-                                        SInfo.RetVec, TagEnd)) {
-        for (auto *End : Info.LifetimeEnd)
-          End->eraseFromParent();
-      }
-    } else {
-      uint64_t Size = Info.AI->getAllocationSizeInBits(*DL).getValue() / 8;
-      Value *Ptr = IRB.CreatePointerCast(TagPCall, IRB.getInt8PtrTy());
-      tagAlloca(AI, &*IRB.GetInsertPoint(), Ptr, Size);
-      for (auto &RI : SInfo.RetVec) {
-        untagAlloca(AI, RI, Size);
-      }
-      // We may have inserted tag/untag outside of any lifetime interval.
-      // Remove all lifetime intrinsics for this alloca.
-      for (auto &II : Info.LifetimeStart)
-        II->eraseFromParent();
-      for (auto &II : Info.LifetimeEnd)
-        II->eraseFromParent();
-    }
+    auto TagStart = [&](Instruction* Node, uint64_t Size) { 
+      if (!Node)
+        Node = &*IRB.GetInsertPoint();
+      tagAlloca(AI, Node->getNextNode(), AI, Size);
+    };
+    auto TagEnd = [&](Instruction *Node, uint64_t Size) { untagAlloca(AI, Node, Size); };
 
+    memtag::tagLifetimes(SInfo, Info, !SInfo.CallsReturnTwice, ClMaxLifetimes,
+                         *DT, *PDT, TagStart, TagEnd);
     // Fixup debug intrinsics to point to the new alloca.
     for (auto DVI : Info.DbgVariableIntrinsics)
       DVI->replaceVariableLocationOp(OldAI, Info.AI);
