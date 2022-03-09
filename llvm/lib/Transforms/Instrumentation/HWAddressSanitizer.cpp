@@ -292,7 +292,7 @@ public:
       Instruction *I, SmallVectorImpl<InterestingMemoryOperand> &Interesting);
 
   bool isInterestingAlloca(const AllocaInst &AI);
-  void tagAlloca(IRBuilder<> &IRB, AllocaInst *AI, Value *Tag, size_t Size);
+  void tagAlloca(IRBuilder<> &IRB, Value *AI, Value *Tag, size_t Size);
   Value *tagPointer(IRBuilder<> &IRB, Type *Ty, Value *PtrLong, Value *Tag);
   Value *untagPointer(IRBuilder<> &IRB, Value *PtrLong);
   bool instrumentStack(memtag::StackInfo &Info, Value *StackTag,
@@ -1043,7 +1043,7 @@ bool HWAddressSanitizer::instrumentMemAccess(InterestingMemoryOperand &O) {
   return true;
 }
 
-void HWAddressSanitizer::tagAlloca(IRBuilder<> &IRB, AllocaInst *AI, Value *Tag,
+void HWAddressSanitizer::tagAlloca(IRBuilder<> &IRB, Value *AI, Value *Tag,
                                    size_t Size) {
   size_t AlignedSize = alignTo(Size, Mapping.getObjectAlignment());
   if (!UseShortGranules)
@@ -1305,6 +1305,11 @@ bool HWAddressSanitizer::instrumentLandingPads(
   return true;
 }
 
+static bool isLifetimeIntr(Value *V) {
+  IntrinsicInst *II = dyn_cast<IntrinsicInst>(V);
+  return II && II->isLifetimeStartOrEnd();
+}
+
 bool HWAddressSanitizer::instrumentStack(
     memtag::StackInfo &SInfo, Value *StackTag,
     llvm::function_ref<const DominatorTree &()> GetDT,
@@ -1330,8 +1335,9 @@ bool HWAddressSanitizer::instrumentStack(
         AI->hasName() ? AI->getName().str() : "alloca." + itostr(N);
     Replacement->setName(Name + ".hwasan");
 
-    AI->replaceUsesWithIf(Replacement,
-                          [AILong](Use &U) { return U.getUser() != AILong; });
+    AI->replaceUsesWithIf(Replacement, [AILong](Use &U) {
+      return U.getUser() != AILong && !isLifetimeIntr(U.getUser());
+    });
 
     for (auto *DDI : Info.DbgVariableIntrinsics) {
       // Prepend "tag_offset, N" to the dwarf expression.
@@ -1345,17 +1351,6 @@ bool HWAddressSanitizer::instrumentStack(
                                                           NewOps, LocNo));
     }
 
-    size_t Size = memtag::getAllocaSizeInBytes(*AI);
-    size_t AlignedSize = alignTo(Size, Mapping.getObjectAlignment());
-    auto TagEnd = [&](Instruction *Node) {
-      IRB.SetInsertPoint(Node);
-      Value *UARTag = getUARTag(IRB, StackTag);
-      // When untagging, use the `AlignedSize` because we need to set the tags
-      // for the entire alloca to zero. If we used `Size` here, we would
-      // keep the last granule tagged, and store zero in the last byte of the
-      // last granule, due to how short granules are implemented.
-      tagAlloca(IRB, AI, UARTag, AlignedSize);
-    };
     // Calls to functions that may return twice (e.g. setjmp) confuse the
     // postdominator analysis, and will leave us to keep memory tagged after
     // function return. Work around this by always untagging at every return
@@ -1367,8 +1362,23 @@ bool HWAddressSanitizer::instrumentStack(
         !SInfo.CallsReturnTwice;
     if (DetectUseAfterScope && StandardLifetime) {
       IntrinsicInst *Start = Info.LifetimeStart[0];
+      uint64_t LifetimeSize =
+          cast<ConstantInt>(Start->getArgOperand(0))->getZExtValue();
+      size_t AlignedLifetimeSize =
+          alignTo(LifetimeSize, Mapping.getObjectAlignment());
+      Value *LifetimePtr = Start->getArgOperand(1);
+      auto TagEnd = [&](Instruction *Node) {
+        IRB.SetInsertPoint(Node);
+        Value *UARTag = getUARTag(IRB, StackTag);
+        // When untagging, use the `AlignedSize` because we need to set the tags
+        // for the entire alloca to zero. If we used `Size` here, we would
+        // keep the last granule tagged, and store zero in the last byte of the
+        // last granule, due to how short granules are implemented.
+        tagAlloca(IRB, LifetimePtr, UARTag, AlignedLifetimeSize);
+      };
+
       IRB.SetInsertPoint(Start->getNextNode());
-      tagAlloca(IRB, AI, Tag, Size);
+      tagAlloca(IRB, LifetimePtr, Tag, LifetimeSize);
       if (!memtag::forAllReachableExits(GetDT(), GetPDT(), Start,
                                         Info.LifetimeEnd, SInfo.RetVec,
                                         TagEnd)) {
@@ -1376,9 +1386,19 @@ bool HWAddressSanitizer::instrumentStack(
           End->eraseFromParent();
       }
     } else {
-      tagAlloca(IRB, AI, Tag, Size);
-      for (auto *RI : SInfo.RetVec)
-        TagEnd(RI);
+      size_t AllocaSize = memtag::getAllocaSizeInBytes(*AI);
+      size_t AlignedAllocaSize =
+          alignTo(AllocaSize, Mapping.getObjectAlignment());
+      tagAlloca(IRB, AI, Tag, AllocaSize);
+      for (auto *RI : SInfo.RetVec) {
+        IRB.SetInsertPoint(RI);
+        Value *UARTag = getUARTag(IRB, StackTag);
+        // When untagging, use the `AlignedSize` because we need to set the tags
+        // for the entire alloca to zero. If we used `Size` here, we would
+        // keep the last granule tagged, and store zero in the last byte of the
+        // last granule, due to how short granules are implemented.
+        tagAlloca(IRB, AI, UARTag, AlignedAllocaSize);
+      }
       // We inserted tagging outside of the lifetimes, so we have to remove
       // them.
       for (auto &II : Info.LifetimeStart)
