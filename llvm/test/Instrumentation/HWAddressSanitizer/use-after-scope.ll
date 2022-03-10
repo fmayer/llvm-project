@@ -2,6 +2,9 @@
 ; RUN: opt -passes=hwasan -hwasan-use-after-scope=1 -hwasan-generate-tags-with-calls -S < %s | FileCheck %s --check-prefixes=SCOPE
 ; RUN: opt -passes=hwasan -hwasan-use-after-scope=0 -hwasan-generate-tags-with-calls -S < %s | FileCheck %s --check-prefixes=NOSCOPE
 
+; RUN: opt -passes=hwasan -hwasan-use-short-granules=1 -hwasan-generate-tags-with-calls -hwasan-use-after-scope=1 -S < %s | FileCheck %s --check-prefixes=SCOPE-SHORT
+; RUN: opt -passes=hwasan -hwasan-use-short-granules=1 -hwasan-generate-tags-with-calls -hwasan-use-after-scope=0 -S < %s | FileCheck %s --check-prefixes=NOSCOPE-SHORT
+
 ; ModuleID = 'use-after-scope.c'
 source_filename = "use-after-scope.c"
 target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
@@ -103,6 +106,108 @@ define dso_local i32 @standard_lifetime() local_unnamed_addr sanitize_hwaddress 
 ; NOSCOPE-NEXT:    [[TMP35:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP34]]
 ; NOSCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP35]], i8 0, i64 1, i1 false)
 ; NOSCOPE-NEXT:    ret i32 0
+;
+; SCOPE-SHORT-LABEL: @standard_lifetime(
+; SCOPE-SHORT-NEXT:    [[TMP1:%.*]] = call i8* @llvm.thread.pointer()
+; SCOPE-SHORT-NEXT:    [[TMP2:%.*]] = getelementptr i8, i8* [[TMP1]], i32 48
+; SCOPE-SHORT-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to i64*
+; SCOPE-SHORT-NEXT:    [[TMP4:%.*]] = load i64, i64* [[TMP3]], align 8
+; SCOPE-SHORT-NEXT:    [[TMP5:%.*]] = ashr i64 [[TMP4]], 3
+; SCOPE-SHORT-NEXT:    [[TMP6:%.*]] = call i64 @llvm.read_register.i64(metadata [[META1:![0-9]+]])
+; SCOPE-SHORT-NEXT:    [[TMP7:%.*]] = call i8* @llvm.frameaddress.p0i8(i32 0)
+; SCOPE-SHORT-NEXT:    [[TMP8:%.*]] = ptrtoint i8* [[TMP7]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP9:%.*]] = shl i64 [[TMP8]], 44
+; SCOPE-SHORT-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP4]] to i64*
+; SCOPE-SHORT-NEXT:    [[TMP11:%.*]] = or i64 [[TMP6]], [[TMP9]]
+; SCOPE-SHORT-NEXT:    store i64 [[TMP11]], i64* [[TMP10]], align 8
+; SCOPE-SHORT-NEXT:    [[TMP12:%.*]] = ashr i64 [[TMP4]], 56
+; SCOPE-SHORT-NEXT:    [[TMP13:%.*]] = shl nuw nsw i64 [[TMP12]], 12
+; SCOPE-SHORT-NEXT:    [[TMP14:%.*]] = xor i64 [[TMP13]], -1
+; SCOPE-SHORT-NEXT:    [[TMP15:%.*]] = add i64 [[TMP4]], 8
+; SCOPE-SHORT-NEXT:    [[TMP16:%.*]] = and i64 [[TMP15]], [[TMP14]]
+; SCOPE-SHORT-NEXT:    store i64 [[TMP16]], i64* [[TMP3]], align 8
+; SCOPE-SHORT-NEXT:    [[TMP17:%.*]] = or i64 [[TMP4]], 4294967295
+; SCOPE-SHORT-NEXT:    [[HWASAN_SHADOW:%.*]] = add i64 [[TMP17]], 1
+; SCOPE-SHORT-NEXT:    [[TMP18:%.*]] = inttoptr i64 [[HWASAN_SHADOW]] to i8*
+; SCOPE-SHORT-NEXT:    [[TMP19:%.*]] = alloca { i8, [15 x i8] }, align 16
+; SCOPE-SHORT-NEXT:    [[TMP20:%.*]] = bitcast { i8, [15 x i8] }* [[TMP19]] to i8*
+; SCOPE-SHORT-NEXT:    [[TMP21:%.*]] = call i8 @__hwasan_generate_tag()
+; SCOPE-SHORT-NEXT:    [[TMP22:%.*]] = zext i8 [[TMP21]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP23:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP24:%.*]] = shl i64 [[TMP22]], 56
+; SCOPE-SHORT-NEXT:    [[TMP25:%.*]] = or i64 [[TMP23]], [[TMP24]]
+; SCOPE-SHORT-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP25]] to i8*
+; SCOPE-SHORT-NEXT:    br label [[TMP26:%.*]]
+; SCOPE-SHORT:       26:
+; SCOPE-SHORT-NEXT:    call void @llvm.lifetime.start.p0i8(i64 1, i8* nonnull [[ALLOCA_0_HWASAN]])
+; SCOPE-SHORT-NEXT:    [[TMP27:%.*]] = trunc i64 [[TMP22]] to i8
+; SCOPE-SHORT-NEXT:    [[TMP28:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP29:%.*]] = lshr i64 [[TMP28]], 4
+; SCOPE-SHORT-NEXT:    [[TMP30:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP29]]
+; SCOPE-SHORT-NEXT:    [[TMP31:%.*]] = getelementptr i8, i8* [[TMP30]], i32 0
+; SCOPE-SHORT-NEXT:    store i8 1, i8* [[TMP31]], align 1
+; SCOPE-SHORT-NEXT:    [[TMP32:%.*]] = getelementptr i8, i8* [[TMP20]], i32 15
+; SCOPE-SHORT-NEXT:    store i8 [[TMP27]], i8* [[TMP32]], align 1
+; SCOPE-SHORT-NEXT:    [[TMP33:%.*]] = tail call i1 (...) @cond()
+; SCOPE-SHORT-NEXT:    [[TMP34:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP35:%.*]] = lshr i64 [[TMP34]], 4
+; SCOPE-SHORT-NEXT:    [[TMP36:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP35]]
+; SCOPE-SHORT-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP36]], i8 0, i64 1, i1 false)
+; SCOPE-SHORT-NEXT:    call void @llvm.lifetime.end.p0i8(i64 1, i8* nonnull [[ALLOCA_0_HWASAN]])
+; SCOPE-SHORT-NEXT:    br i1 [[TMP33]], label [[TMP37:%.*]], label [[TMP26]]
+; SCOPE-SHORT:       37:
+; SCOPE-SHORT-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
+; SCOPE-SHORT-NEXT:    ret i32 0
+;
+; NOSCOPE-SHORT-LABEL: @standard_lifetime(
+; NOSCOPE-SHORT-NEXT:    [[TMP1:%.*]] = call i8* @llvm.thread.pointer()
+; NOSCOPE-SHORT-NEXT:    [[TMP2:%.*]] = getelementptr i8, i8* [[TMP1]], i32 48
+; NOSCOPE-SHORT-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to i64*
+; NOSCOPE-SHORT-NEXT:    [[TMP4:%.*]] = load i64, i64* [[TMP3]], align 8
+; NOSCOPE-SHORT-NEXT:    [[TMP5:%.*]] = ashr i64 [[TMP4]], 3
+; NOSCOPE-SHORT-NEXT:    [[TMP6:%.*]] = call i64 @llvm.read_register.i64(metadata [[META1:![0-9]+]])
+; NOSCOPE-SHORT-NEXT:    [[TMP7:%.*]] = call i8* @llvm.frameaddress.p0i8(i32 0)
+; NOSCOPE-SHORT-NEXT:    [[TMP8:%.*]] = ptrtoint i8* [[TMP7]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP9:%.*]] = shl i64 [[TMP8]], 44
+; NOSCOPE-SHORT-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP4]] to i64*
+; NOSCOPE-SHORT-NEXT:    [[TMP11:%.*]] = or i64 [[TMP6]], [[TMP9]]
+; NOSCOPE-SHORT-NEXT:    store i64 [[TMP11]], i64* [[TMP10]], align 8
+; NOSCOPE-SHORT-NEXT:    [[TMP12:%.*]] = ashr i64 [[TMP4]], 56
+; NOSCOPE-SHORT-NEXT:    [[TMP13:%.*]] = shl nuw nsw i64 [[TMP12]], 12
+; NOSCOPE-SHORT-NEXT:    [[TMP14:%.*]] = xor i64 [[TMP13]], -1
+; NOSCOPE-SHORT-NEXT:    [[TMP15:%.*]] = add i64 [[TMP4]], 8
+; NOSCOPE-SHORT-NEXT:    [[TMP16:%.*]] = and i64 [[TMP15]], [[TMP14]]
+; NOSCOPE-SHORT-NEXT:    store i64 [[TMP16]], i64* [[TMP3]], align 8
+; NOSCOPE-SHORT-NEXT:    [[TMP17:%.*]] = or i64 [[TMP4]], 4294967295
+; NOSCOPE-SHORT-NEXT:    [[HWASAN_SHADOW:%.*]] = add i64 [[TMP17]], 1
+; NOSCOPE-SHORT-NEXT:    [[TMP18:%.*]] = inttoptr i64 [[HWASAN_SHADOW]] to i8*
+; NOSCOPE-SHORT-NEXT:    [[TMP19:%.*]] = alloca { i8, [15 x i8] }, align 16
+; NOSCOPE-SHORT-NEXT:    [[TMP20:%.*]] = bitcast { i8, [15 x i8] }* [[TMP19]] to i8*
+; NOSCOPE-SHORT-NEXT:    [[TMP21:%.*]] = call i8 @__hwasan_generate_tag()
+; NOSCOPE-SHORT-NEXT:    [[TMP22:%.*]] = zext i8 [[TMP21]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP23:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP24:%.*]] = shl i64 [[TMP22]], 56
+; NOSCOPE-SHORT-NEXT:    [[TMP25:%.*]] = or i64 [[TMP23]], [[TMP24]]
+; NOSCOPE-SHORT-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP25]] to i8*
+; NOSCOPE-SHORT-NEXT:    [[TMP26:%.*]] = trunc i64 [[TMP22]] to i8
+; NOSCOPE-SHORT-NEXT:    [[TMP27:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP28:%.*]] = lshr i64 [[TMP27]], 4
+; NOSCOPE-SHORT-NEXT:    [[TMP29:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP28]]
+; NOSCOPE-SHORT-NEXT:    [[TMP30:%.*]] = getelementptr i8, i8* [[TMP29]], i32 0
+; NOSCOPE-SHORT-NEXT:    store i8 1, i8* [[TMP30]], align 1
+; NOSCOPE-SHORT-NEXT:    [[TMP31:%.*]] = getelementptr i8, i8* [[TMP20]], i32 15
+; NOSCOPE-SHORT-NEXT:    store i8 [[TMP26]], i8* [[TMP31]], align 1
+; NOSCOPE-SHORT-NEXT:    br label [[TMP32:%.*]]
+; NOSCOPE-SHORT:       32:
+; NOSCOPE-SHORT-NEXT:    [[TMP33:%.*]] = tail call i1 (...) @cond()
+; NOSCOPE-SHORT-NEXT:    br i1 [[TMP33]], label [[TMP34:%.*]], label [[TMP32]]
+; NOSCOPE-SHORT:       34:
+; NOSCOPE-SHORT-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
+; NOSCOPE-SHORT-NEXT:    [[TMP35:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP36:%.*]] = lshr i64 [[TMP35]], 4
+; NOSCOPE-SHORT-NEXT:    [[TMP37:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP36]]
+; NOSCOPE-SHORT-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP37]], i8 0, i64 1, i1 false)
+; NOSCOPE-SHORT-NEXT:    ret i32 0
 ;
   %1 = alloca i8, align 1
   br label %2
@@ -217,6 +322,108 @@ define dso_local i32 @standard_lifetime_optnone() local_unnamed_addr optnone noi
 ; NOSCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP35]], i8 0, i64 1, i1 false)
 ; NOSCOPE-NEXT:    ret i32 0
 ;
+; SCOPE-SHORT-LABEL: @standard_lifetime_optnone(
+; SCOPE-SHORT-NEXT:    [[TMP1:%.*]] = call i8* @llvm.thread.pointer()
+; SCOPE-SHORT-NEXT:    [[TMP2:%.*]] = getelementptr i8, i8* [[TMP1]], i32 48
+; SCOPE-SHORT-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to i64*
+; SCOPE-SHORT-NEXT:    [[TMP4:%.*]] = load i64, i64* [[TMP3]], align 8
+; SCOPE-SHORT-NEXT:    [[TMP5:%.*]] = ashr i64 [[TMP4]], 3
+; SCOPE-SHORT-NEXT:    [[TMP6:%.*]] = call i64 @llvm.read_register.i64(metadata [[META1]])
+; SCOPE-SHORT-NEXT:    [[TMP7:%.*]] = call i8* @llvm.frameaddress.p0i8(i32 0)
+; SCOPE-SHORT-NEXT:    [[TMP8:%.*]] = ptrtoint i8* [[TMP7]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP9:%.*]] = shl i64 [[TMP8]], 44
+; SCOPE-SHORT-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP4]] to i64*
+; SCOPE-SHORT-NEXT:    [[TMP11:%.*]] = or i64 [[TMP6]], [[TMP9]]
+; SCOPE-SHORT-NEXT:    store i64 [[TMP11]], i64* [[TMP10]], align 8
+; SCOPE-SHORT-NEXT:    [[TMP12:%.*]] = ashr i64 [[TMP4]], 56
+; SCOPE-SHORT-NEXT:    [[TMP13:%.*]] = shl nuw nsw i64 [[TMP12]], 12
+; SCOPE-SHORT-NEXT:    [[TMP14:%.*]] = xor i64 [[TMP13]], -1
+; SCOPE-SHORT-NEXT:    [[TMP15:%.*]] = add i64 [[TMP4]], 8
+; SCOPE-SHORT-NEXT:    [[TMP16:%.*]] = and i64 [[TMP15]], [[TMP14]]
+; SCOPE-SHORT-NEXT:    store i64 [[TMP16]], i64* [[TMP3]], align 8
+; SCOPE-SHORT-NEXT:    [[TMP17:%.*]] = or i64 [[TMP4]], 4294967295
+; SCOPE-SHORT-NEXT:    [[HWASAN_SHADOW:%.*]] = add i64 [[TMP17]], 1
+; SCOPE-SHORT-NEXT:    [[TMP18:%.*]] = inttoptr i64 [[HWASAN_SHADOW]] to i8*
+; SCOPE-SHORT-NEXT:    [[TMP19:%.*]] = alloca { i8, [15 x i8] }, align 16
+; SCOPE-SHORT-NEXT:    [[TMP20:%.*]] = bitcast { i8, [15 x i8] }* [[TMP19]] to i8*
+; SCOPE-SHORT-NEXT:    [[TMP21:%.*]] = call i8 @__hwasan_generate_tag()
+; SCOPE-SHORT-NEXT:    [[TMP22:%.*]] = zext i8 [[TMP21]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP23:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP24:%.*]] = shl i64 [[TMP22]], 56
+; SCOPE-SHORT-NEXT:    [[TMP25:%.*]] = or i64 [[TMP23]], [[TMP24]]
+; SCOPE-SHORT-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP25]] to i8*
+; SCOPE-SHORT-NEXT:    br label [[TMP26:%.*]]
+; SCOPE-SHORT:       26:
+; SCOPE-SHORT-NEXT:    call void @llvm.lifetime.start.p0i8(i64 1, i8* nonnull [[ALLOCA_0_HWASAN]])
+; SCOPE-SHORT-NEXT:    [[TMP27:%.*]] = trunc i64 [[TMP22]] to i8
+; SCOPE-SHORT-NEXT:    [[TMP28:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP29:%.*]] = lshr i64 [[TMP28]], 4
+; SCOPE-SHORT-NEXT:    [[TMP30:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP29]]
+; SCOPE-SHORT-NEXT:    [[TMP31:%.*]] = getelementptr i8, i8* [[TMP30]], i32 0
+; SCOPE-SHORT-NEXT:    store i8 1, i8* [[TMP31]], align 1
+; SCOPE-SHORT-NEXT:    [[TMP32:%.*]] = getelementptr i8, i8* [[TMP20]], i32 15
+; SCOPE-SHORT-NEXT:    store i8 [[TMP27]], i8* [[TMP32]], align 1
+; SCOPE-SHORT-NEXT:    [[TMP33:%.*]] = tail call i1 (...) @cond()
+; SCOPE-SHORT-NEXT:    [[TMP34:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP35:%.*]] = lshr i64 [[TMP34]], 4
+; SCOPE-SHORT-NEXT:    [[TMP36:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP35]]
+; SCOPE-SHORT-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP36]], i8 0, i64 1, i1 false)
+; SCOPE-SHORT-NEXT:    call void @llvm.lifetime.end.p0i8(i64 1, i8* nonnull [[ALLOCA_0_HWASAN]])
+; SCOPE-SHORT-NEXT:    br i1 [[TMP33]], label [[TMP37:%.*]], label [[TMP26]]
+; SCOPE-SHORT:       37:
+; SCOPE-SHORT-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
+; SCOPE-SHORT-NEXT:    ret i32 0
+;
+; NOSCOPE-SHORT-LABEL: @standard_lifetime_optnone(
+; NOSCOPE-SHORT-NEXT:    [[TMP1:%.*]] = call i8* @llvm.thread.pointer()
+; NOSCOPE-SHORT-NEXT:    [[TMP2:%.*]] = getelementptr i8, i8* [[TMP1]], i32 48
+; NOSCOPE-SHORT-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to i64*
+; NOSCOPE-SHORT-NEXT:    [[TMP4:%.*]] = load i64, i64* [[TMP3]], align 8
+; NOSCOPE-SHORT-NEXT:    [[TMP5:%.*]] = ashr i64 [[TMP4]], 3
+; NOSCOPE-SHORT-NEXT:    [[TMP6:%.*]] = call i64 @llvm.read_register.i64(metadata [[META1]])
+; NOSCOPE-SHORT-NEXT:    [[TMP7:%.*]] = call i8* @llvm.frameaddress.p0i8(i32 0)
+; NOSCOPE-SHORT-NEXT:    [[TMP8:%.*]] = ptrtoint i8* [[TMP7]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP9:%.*]] = shl i64 [[TMP8]], 44
+; NOSCOPE-SHORT-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP4]] to i64*
+; NOSCOPE-SHORT-NEXT:    [[TMP11:%.*]] = or i64 [[TMP6]], [[TMP9]]
+; NOSCOPE-SHORT-NEXT:    store i64 [[TMP11]], i64* [[TMP10]], align 8
+; NOSCOPE-SHORT-NEXT:    [[TMP12:%.*]] = ashr i64 [[TMP4]], 56
+; NOSCOPE-SHORT-NEXT:    [[TMP13:%.*]] = shl nuw nsw i64 [[TMP12]], 12
+; NOSCOPE-SHORT-NEXT:    [[TMP14:%.*]] = xor i64 [[TMP13]], -1
+; NOSCOPE-SHORT-NEXT:    [[TMP15:%.*]] = add i64 [[TMP4]], 8
+; NOSCOPE-SHORT-NEXT:    [[TMP16:%.*]] = and i64 [[TMP15]], [[TMP14]]
+; NOSCOPE-SHORT-NEXT:    store i64 [[TMP16]], i64* [[TMP3]], align 8
+; NOSCOPE-SHORT-NEXT:    [[TMP17:%.*]] = or i64 [[TMP4]], 4294967295
+; NOSCOPE-SHORT-NEXT:    [[HWASAN_SHADOW:%.*]] = add i64 [[TMP17]], 1
+; NOSCOPE-SHORT-NEXT:    [[TMP18:%.*]] = inttoptr i64 [[HWASAN_SHADOW]] to i8*
+; NOSCOPE-SHORT-NEXT:    [[TMP19:%.*]] = alloca { i8, [15 x i8] }, align 16
+; NOSCOPE-SHORT-NEXT:    [[TMP20:%.*]] = bitcast { i8, [15 x i8] }* [[TMP19]] to i8*
+; NOSCOPE-SHORT-NEXT:    [[TMP21:%.*]] = call i8 @__hwasan_generate_tag()
+; NOSCOPE-SHORT-NEXT:    [[TMP22:%.*]] = zext i8 [[TMP21]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP23:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP24:%.*]] = shl i64 [[TMP22]], 56
+; NOSCOPE-SHORT-NEXT:    [[TMP25:%.*]] = or i64 [[TMP23]], [[TMP24]]
+; NOSCOPE-SHORT-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP25]] to i8*
+; NOSCOPE-SHORT-NEXT:    [[TMP26:%.*]] = trunc i64 [[TMP22]] to i8
+; NOSCOPE-SHORT-NEXT:    [[TMP27:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP28:%.*]] = lshr i64 [[TMP27]], 4
+; NOSCOPE-SHORT-NEXT:    [[TMP29:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP28]]
+; NOSCOPE-SHORT-NEXT:    [[TMP30:%.*]] = getelementptr i8, i8* [[TMP29]], i32 0
+; NOSCOPE-SHORT-NEXT:    store i8 1, i8* [[TMP30]], align 1
+; NOSCOPE-SHORT-NEXT:    [[TMP31:%.*]] = getelementptr i8, i8* [[TMP20]], i32 15
+; NOSCOPE-SHORT-NEXT:    store i8 [[TMP26]], i8* [[TMP31]], align 1
+; NOSCOPE-SHORT-NEXT:    br label [[TMP32:%.*]]
+; NOSCOPE-SHORT:       32:
+; NOSCOPE-SHORT-NEXT:    [[TMP33:%.*]] = tail call i1 (...) @cond()
+; NOSCOPE-SHORT-NEXT:    br i1 [[TMP33]], label [[TMP34:%.*]], label [[TMP32]]
+; NOSCOPE-SHORT:       34:
+; NOSCOPE-SHORT-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
+; NOSCOPE-SHORT-NEXT:    [[TMP35:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP36:%.*]] = lshr i64 [[TMP35]], 4
+; NOSCOPE-SHORT-NEXT:    [[TMP37:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP36]]
+; NOSCOPE-SHORT-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP37]], i8 0, i64 1, i1 false)
+; NOSCOPE-SHORT-NEXT:    ret i32 0
+;
   %1 = alloca i8, align 1
   br label %2
 
@@ -319,6 +526,98 @@ define dso_local i32 @multiple_lifetimes() local_unnamed_addr sanitize_hwaddress
 ; NOSCOPE-NEXT:    [[TMP32:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP31]]
 ; NOSCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP32]], i8 0, i64 1, i1 false)
 ; NOSCOPE-NEXT:    ret i32 0
+;
+; SCOPE-SHORT-LABEL: @multiple_lifetimes(
+; SCOPE-SHORT-NEXT:    [[TMP1:%.*]] = call i8* @llvm.thread.pointer()
+; SCOPE-SHORT-NEXT:    [[TMP2:%.*]] = getelementptr i8, i8* [[TMP1]], i32 48
+; SCOPE-SHORT-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to i64*
+; SCOPE-SHORT-NEXT:    [[TMP4:%.*]] = load i64, i64* [[TMP3]], align 8
+; SCOPE-SHORT-NEXT:    [[TMP5:%.*]] = ashr i64 [[TMP4]], 3
+; SCOPE-SHORT-NEXT:    [[TMP6:%.*]] = call i64 @llvm.read_register.i64(metadata [[META1]])
+; SCOPE-SHORT-NEXT:    [[TMP7:%.*]] = call i8* @llvm.frameaddress.p0i8(i32 0)
+; SCOPE-SHORT-NEXT:    [[TMP8:%.*]] = ptrtoint i8* [[TMP7]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP9:%.*]] = shl i64 [[TMP8]], 44
+; SCOPE-SHORT-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP4]] to i64*
+; SCOPE-SHORT-NEXT:    [[TMP11:%.*]] = or i64 [[TMP6]], [[TMP9]]
+; SCOPE-SHORT-NEXT:    store i64 [[TMP11]], i64* [[TMP10]], align 8
+; SCOPE-SHORT-NEXT:    [[TMP12:%.*]] = ashr i64 [[TMP4]], 56
+; SCOPE-SHORT-NEXT:    [[TMP13:%.*]] = shl nuw nsw i64 [[TMP12]], 12
+; SCOPE-SHORT-NEXT:    [[TMP14:%.*]] = xor i64 [[TMP13]], -1
+; SCOPE-SHORT-NEXT:    [[TMP15:%.*]] = add i64 [[TMP4]], 8
+; SCOPE-SHORT-NEXT:    [[TMP16:%.*]] = and i64 [[TMP15]], [[TMP14]]
+; SCOPE-SHORT-NEXT:    store i64 [[TMP16]], i64* [[TMP3]], align 8
+; SCOPE-SHORT-NEXT:    [[TMP17:%.*]] = or i64 [[TMP4]], 4294967295
+; SCOPE-SHORT-NEXT:    [[HWASAN_SHADOW:%.*]] = add i64 [[TMP17]], 1
+; SCOPE-SHORT-NEXT:    [[TMP18:%.*]] = inttoptr i64 [[HWASAN_SHADOW]] to i8*
+; SCOPE-SHORT-NEXT:    [[TMP19:%.*]] = alloca { i8, [15 x i8] }, align 16
+; SCOPE-SHORT-NEXT:    [[TMP20:%.*]] = bitcast { i8, [15 x i8] }* [[TMP19]] to i8*
+; SCOPE-SHORT-NEXT:    [[TMP21:%.*]] = call i8 @__hwasan_generate_tag()
+; SCOPE-SHORT-NEXT:    [[TMP22:%.*]] = zext i8 [[TMP21]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP23:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP24:%.*]] = shl i64 [[TMP22]], 56
+; SCOPE-SHORT-NEXT:    [[TMP25:%.*]] = or i64 [[TMP23]], [[TMP24]]
+; SCOPE-SHORT-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP25]] to i8*
+; SCOPE-SHORT-NEXT:    [[TMP26:%.*]] = trunc i64 [[TMP22]] to i8
+; SCOPE-SHORT-NEXT:    [[TMP27:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP28:%.*]] = lshr i64 [[TMP27]], 4
+; SCOPE-SHORT-NEXT:    [[TMP29:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP28]]
+; SCOPE-SHORT-NEXT:    [[TMP30:%.*]] = getelementptr i8, i8* [[TMP29]], i32 0
+; SCOPE-SHORT-NEXT:    store i8 1, i8* [[TMP30]], align 1
+; SCOPE-SHORT-NEXT:    [[TMP31:%.*]] = getelementptr i8, i8* [[TMP20]], i32 15
+; SCOPE-SHORT-NEXT:    store i8 [[TMP26]], i8* [[TMP31]], align 1
+; SCOPE-SHORT-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
+; SCOPE-SHORT-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
+; SCOPE-SHORT-NEXT:    [[TMP32:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP33:%.*]] = lshr i64 [[TMP32]], 4
+; SCOPE-SHORT-NEXT:    [[TMP34:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP33]]
+; SCOPE-SHORT-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP34]], i8 0, i64 1, i1 false)
+; SCOPE-SHORT-NEXT:    ret i32 0
+;
+; NOSCOPE-SHORT-LABEL: @multiple_lifetimes(
+; NOSCOPE-SHORT-NEXT:    [[TMP1:%.*]] = call i8* @llvm.thread.pointer()
+; NOSCOPE-SHORT-NEXT:    [[TMP2:%.*]] = getelementptr i8, i8* [[TMP1]], i32 48
+; NOSCOPE-SHORT-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to i64*
+; NOSCOPE-SHORT-NEXT:    [[TMP4:%.*]] = load i64, i64* [[TMP3]], align 8
+; NOSCOPE-SHORT-NEXT:    [[TMP5:%.*]] = ashr i64 [[TMP4]], 3
+; NOSCOPE-SHORT-NEXT:    [[TMP6:%.*]] = call i64 @llvm.read_register.i64(metadata [[META1]])
+; NOSCOPE-SHORT-NEXT:    [[TMP7:%.*]] = call i8* @llvm.frameaddress.p0i8(i32 0)
+; NOSCOPE-SHORT-NEXT:    [[TMP8:%.*]] = ptrtoint i8* [[TMP7]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP9:%.*]] = shl i64 [[TMP8]], 44
+; NOSCOPE-SHORT-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP4]] to i64*
+; NOSCOPE-SHORT-NEXT:    [[TMP11:%.*]] = or i64 [[TMP6]], [[TMP9]]
+; NOSCOPE-SHORT-NEXT:    store i64 [[TMP11]], i64* [[TMP10]], align 8
+; NOSCOPE-SHORT-NEXT:    [[TMP12:%.*]] = ashr i64 [[TMP4]], 56
+; NOSCOPE-SHORT-NEXT:    [[TMP13:%.*]] = shl nuw nsw i64 [[TMP12]], 12
+; NOSCOPE-SHORT-NEXT:    [[TMP14:%.*]] = xor i64 [[TMP13]], -1
+; NOSCOPE-SHORT-NEXT:    [[TMP15:%.*]] = add i64 [[TMP4]], 8
+; NOSCOPE-SHORT-NEXT:    [[TMP16:%.*]] = and i64 [[TMP15]], [[TMP14]]
+; NOSCOPE-SHORT-NEXT:    store i64 [[TMP16]], i64* [[TMP3]], align 8
+; NOSCOPE-SHORT-NEXT:    [[TMP17:%.*]] = or i64 [[TMP4]], 4294967295
+; NOSCOPE-SHORT-NEXT:    [[HWASAN_SHADOW:%.*]] = add i64 [[TMP17]], 1
+; NOSCOPE-SHORT-NEXT:    [[TMP18:%.*]] = inttoptr i64 [[HWASAN_SHADOW]] to i8*
+; NOSCOPE-SHORT-NEXT:    [[TMP19:%.*]] = alloca { i8, [15 x i8] }, align 16
+; NOSCOPE-SHORT-NEXT:    [[TMP20:%.*]] = bitcast { i8, [15 x i8] }* [[TMP19]] to i8*
+; NOSCOPE-SHORT-NEXT:    [[TMP21:%.*]] = call i8 @__hwasan_generate_tag()
+; NOSCOPE-SHORT-NEXT:    [[TMP22:%.*]] = zext i8 [[TMP21]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP23:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP24:%.*]] = shl i64 [[TMP22]], 56
+; NOSCOPE-SHORT-NEXT:    [[TMP25:%.*]] = or i64 [[TMP23]], [[TMP24]]
+; NOSCOPE-SHORT-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP25]] to i8*
+; NOSCOPE-SHORT-NEXT:    [[TMP26:%.*]] = trunc i64 [[TMP22]] to i8
+; NOSCOPE-SHORT-NEXT:    [[TMP27:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP28:%.*]] = lshr i64 [[TMP27]], 4
+; NOSCOPE-SHORT-NEXT:    [[TMP29:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP28]]
+; NOSCOPE-SHORT-NEXT:    [[TMP30:%.*]] = getelementptr i8, i8* [[TMP29]], i32 0
+; NOSCOPE-SHORT-NEXT:    store i8 1, i8* [[TMP30]], align 1
+; NOSCOPE-SHORT-NEXT:    [[TMP31:%.*]] = getelementptr i8, i8* [[TMP20]], i32 15
+; NOSCOPE-SHORT-NEXT:    store i8 [[TMP26]], i8* [[TMP31]], align 1
+; NOSCOPE-SHORT-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
+; NOSCOPE-SHORT-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
+; NOSCOPE-SHORT-NEXT:    [[TMP32:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP33:%.*]] = lshr i64 [[TMP32]], 4
+; NOSCOPE-SHORT-NEXT:    [[TMP34:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP33]]
+; NOSCOPE-SHORT-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP34]], i8 0, i64 1, i1 false)
+; NOSCOPE-SHORT-NEXT:    ret i32 0
 ;
   %1 = alloca i8, align 1
 ; We erase lifetime markers if we insert instrumentation outside of the
@@ -435,6 +734,115 @@ define dso_local i32 @unreachable_exit() local_unnamed_addr sanitize_hwaddress {
 ; NOSCOPE-NEXT:    [[TMP38:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP37]]
 ; NOSCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP38]], i8 0, i64 1, i1 false)
 ; NOSCOPE-NEXT:    ret i32 0
+;
+; SCOPE-SHORT-LABEL: @unreachable_exit(
+; SCOPE-SHORT-NEXT:    [[TMP1:%.*]] = call i8* @llvm.thread.pointer()
+; SCOPE-SHORT-NEXT:    [[TMP2:%.*]] = getelementptr i8, i8* [[TMP1]], i32 48
+; SCOPE-SHORT-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to i64*
+; SCOPE-SHORT-NEXT:    [[TMP4:%.*]] = load i64, i64* [[TMP3]], align 8
+; SCOPE-SHORT-NEXT:    [[TMP5:%.*]] = ashr i64 [[TMP4]], 3
+; SCOPE-SHORT-NEXT:    [[TMP6:%.*]] = call i64 @llvm.read_register.i64(metadata [[META1]])
+; SCOPE-SHORT-NEXT:    [[TMP7:%.*]] = call i8* @llvm.frameaddress.p0i8(i32 0)
+; SCOPE-SHORT-NEXT:    [[TMP8:%.*]] = ptrtoint i8* [[TMP7]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP9:%.*]] = shl i64 [[TMP8]], 44
+; SCOPE-SHORT-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP4]] to i64*
+; SCOPE-SHORT-NEXT:    [[TMP11:%.*]] = or i64 [[TMP6]], [[TMP9]]
+; SCOPE-SHORT-NEXT:    store i64 [[TMP11]], i64* [[TMP10]], align 8
+; SCOPE-SHORT-NEXT:    [[TMP12:%.*]] = ashr i64 [[TMP4]], 56
+; SCOPE-SHORT-NEXT:    [[TMP13:%.*]] = shl nuw nsw i64 [[TMP12]], 12
+; SCOPE-SHORT-NEXT:    [[TMP14:%.*]] = xor i64 [[TMP13]], -1
+; SCOPE-SHORT-NEXT:    [[TMP15:%.*]] = add i64 [[TMP4]], 8
+; SCOPE-SHORT-NEXT:    [[TMP16:%.*]] = and i64 [[TMP15]], [[TMP14]]
+; SCOPE-SHORT-NEXT:    store i64 [[TMP16]], i64* [[TMP3]], align 8
+; SCOPE-SHORT-NEXT:    [[TMP17:%.*]] = or i64 [[TMP4]], 4294967295
+; SCOPE-SHORT-NEXT:    [[HWASAN_SHADOW:%.*]] = add i64 [[TMP17]], 1
+; SCOPE-SHORT-NEXT:    [[TMP18:%.*]] = inttoptr i64 [[HWASAN_SHADOW]] to i8*
+; SCOPE-SHORT-NEXT:    [[TMP19:%.*]] = alloca { i8, [15 x i8] }, align 16
+; SCOPE-SHORT-NEXT:    [[TMP20:%.*]] = bitcast { i8, [15 x i8] }* [[TMP19]] to i8*
+; SCOPE-SHORT-NEXT:    [[TMP21:%.*]] = call i8 @__hwasan_generate_tag()
+; SCOPE-SHORT-NEXT:    [[TMP22:%.*]] = zext i8 [[TMP21]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP23:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP24:%.*]] = shl i64 [[TMP22]], 56
+; SCOPE-SHORT-NEXT:    [[TMP25:%.*]] = or i64 [[TMP23]], [[TMP24]]
+; SCOPE-SHORT-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP25]] to i8*
+; SCOPE-SHORT-NEXT:    call void @llvm.lifetime.start.p0i8(i64 1, i8* nonnull [[ALLOCA_0_HWASAN]])
+; SCOPE-SHORT-NEXT:    [[TMP26:%.*]] = trunc i64 [[TMP22]] to i8
+; SCOPE-SHORT-NEXT:    [[TMP27:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP28:%.*]] = lshr i64 [[TMP27]], 4
+; SCOPE-SHORT-NEXT:    [[TMP29:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP28]]
+; SCOPE-SHORT-NEXT:    [[TMP30:%.*]] = getelementptr i8, i8* [[TMP29]], i32 0
+; SCOPE-SHORT-NEXT:    store i8 1, i8* [[TMP30]], align 1
+; SCOPE-SHORT-NEXT:    [[TMP31:%.*]] = getelementptr i8, i8* [[TMP20]], i32 15
+; SCOPE-SHORT-NEXT:    store i8 [[TMP26]], i8* [[TMP31]], align 1
+; SCOPE-SHORT-NEXT:    [[TMP32:%.*]] = tail call i1 (...) @cond()
+; SCOPE-SHORT-NEXT:    br i1 [[TMP32]], label [[TMP33:%.*]], label [[TMP37:%.*]]
+; SCOPE-SHORT:       33:
+; SCOPE-SHORT-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
+; SCOPE-SHORT-NEXT:    [[TMP34:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP35:%.*]] = lshr i64 [[TMP34]], 4
+; SCOPE-SHORT-NEXT:    [[TMP36:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP35]]
+; SCOPE-SHORT-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP36]], i8 0, i64 1, i1 false)
+; SCOPE-SHORT-NEXT:    ret i32 0
+; SCOPE-SHORT:       37:
+; SCOPE-SHORT-NEXT:    [[TMP38:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-SHORT-NEXT:    [[TMP39:%.*]] = lshr i64 [[TMP38]], 4
+; SCOPE-SHORT-NEXT:    [[TMP40:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP39]]
+; SCOPE-SHORT-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP40]], i8 0, i64 1, i1 false)
+; SCOPE-SHORT-NEXT:    ret i32 0
+;
+; NOSCOPE-SHORT-LABEL: @unreachable_exit(
+; NOSCOPE-SHORT-NEXT:    [[TMP1:%.*]] = call i8* @llvm.thread.pointer()
+; NOSCOPE-SHORT-NEXT:    [[TMP2:%.*]] = getelementptr i8, i8* [[TMP1]], i32 48
+; NOSCOPE-SHORT-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to i64*
+; NOSCOPE-SHORT-NEXT:    [[TMP4:%.*]] = load i64, i64* [[TMP3]], align 8
+; NOSCOPE-SHORT-NEXT:    [[TMP5:%.*]] = ashr i64 [[TMP4]], 3
+; NOSCOPE-SHORT-NEXT:    [[TMP6:%.*]] = call i64 @llvm.read_register.i64(metadata [[META1]])
+; NOSCOPE-SHORT-NEXT:    [[TMP7:%.*]] = call i8* @llvm.frameaddress.p0i8(i32 0)
+; NOSCOPE-SHORT-NEXT:    [[TMP8:%.*]] = ptrtoint i8* [[TMP7]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP9:%.*]] = shl i64 [[TMP8]], 44
+; NOSCOPE-SHORT-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP4]] to i64*
+; NOSCOPE-SHORT-NEXT:    [[TMP11:%.*]] = or i64 [[TMP6]], [[TMP9]]
+; NOSCOPE-SHORT-NEXT:    store i64 [[TMP11]], i64* [[TMP10]], align 8
+; NOSCOPE-SHORT-NEXT:    [[TMP12:%.*]] = ashr i64 [[TMP4]], 56
+; NOSCOPE-SHORT-NEXT:    [[TMP13:%.*]] = shl nuw nsw i64 [[TMP12]], 12
+; NOSCOPE-SHORT-NEXT:    [[TMP14:%.*]] = xor i64 [[TMP13]], -1
+; NOSCOPE-SHORT-NEXT:    [[TMP15:%.*]] = add i64 [[TMP4]], 8
+; NOSCOPE-SHORT-NEXT:    [[TMP16:%.*]] = and i64 [[TMP15]], [[TMP14]]
+; NOSCOPE-SHORT-NEXT:    store i64 [[TMP16]], i64* [[TMP3]], align 8
+; NOSCOPE-SHORT-NEXT:    [[TMP17:%.*]] = or i64 [[TMP4]], 4294967295
+; NOSCOPE-SHORT-NEXT:    [[HWASAN_SHADOW:%.*]] = add i64 [[TMP17]], 1
+; NOSCOPE-SHORT-NEXT:    [[TMP18:%.*]] = inttoptr i64 [[HWASAN_SHADOW]] to i8*
+; NOSCOPE-SHORT-NEXT:    [[TMP19:%.*]] = alloca { i8, [15 x i8] }, align 16
+; NOSCOPE-SHORT-NEXT:    [[TMP20:%.*]] = bitcast { i8, [15 x i8] }* [[TMP19]] to i8*
+; NOSCOPE-SHORT-NEXT:    [[TMP21:%.*]] = call i8 @__hwasan_generate_tag()
+; NOSCOPE-SHORT-NEXT:    [[TMP22:%.*]] = zext i8 [[TMP21]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP23:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP24:%.*]] = shl i64 [[TMP22]], 56
+; NOSCOPE-SHORT-NEXT:    [[TMP25:%.*]] = or i64 [[TMP23]], [[TMP24]]
+; NOSCOPE-SHORT-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP25]] to i8*
+; NOSCOPE-SHORT-NEXT:    [[TMP26:%.*]] = trunc i64 [[TMP22]] to i8
+; NOSCOPE-SHORT-NEXT:    [[TMP27:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP28:%.*]] = lshr i64 [[TMP27]], 4
+; NOSCOPE-SHORT-NEXT:    [[TMP29:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP28]]
+; NOSCOPE-SHORT-NEXT:    [[TMP30:%.*]] = getelementptr i8, i8* [[TMP29]], i32 0
+; NOSCOPE-SHORT-NEXT:    store i8 1, i8* [[TMP30]], align 1
+; NOSCOPE-SHORT-NEXT:    [[TMP31:%.*]] = getelementptr i8, i8* [[TMP20]], i32 15
+; NOSCOPE-SHORT-NEXT:    store i8 [[TMP26]], i8* [[TMP31]], align 1
+; NOSCOPE-SHORT-NEXT:    [[TMP32:%.*]] = tail call i1 (...) @cond()
+; NOSCOPE-SHORT-NEXT:    br i1 [[TMP32]], label [[TMP33:%.*]], label [[TMP37:%.*]]
+; NOSCOPE-SHORT:       33:
+; NOSCOPE-SHORT-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
+; NOSCOPE-SHORT-NEXT:    [[TMP34:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP35:%.*]] = lshr i64 [[TMP34]], 4
+; NOSCOPE-SHORT-NEXT:    [[TMP36:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP35]]
+; NOSCOPE-SHORT-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP36]], i8 0, i64 1, i1 false)
+; NOSCOPE-SHORT-NEXT:    ret i32 0
+; NOSCOPE-SHORT:       37:
+; NOSCOPE-SHORT-NEXT:    [[TMP38:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-SHORT-NEXT:    [[TMP39:%.*]] = lshr i64 [[TMP38]], 4
+; NOSCOPE-SHORT-NEXT:    [[TMP40:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP39]]
+; NOSCOPE-SHORT-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP40]], i8 0, i64 1, i1 false)
+; NOSCOPE-SHORT-NEXT:    ret i32 0
 ;
   %1 = alloca i8, align 1
   call void @llvm.lifetime.start.p0i8(i64 1, i8* nonnull %1)
