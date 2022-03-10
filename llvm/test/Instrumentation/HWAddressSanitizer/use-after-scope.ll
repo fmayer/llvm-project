@@ -4,52 +4,104 @@
 
 ; ModuleID = 'use-after-scope.c'
 source_filename = "use-after-scope.c"
-target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
-target triple = "x86_64-unknown-linux-gnu"
+target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
+target triple = "aarch64-unknown-linux-android29"
 
 define dso_local i32 @standard_lifetime() local_unnamed_addr sanitize_hwaddress {
 ; SCOPE-LABEL: @standard_lifetime(
-; SCOPE-NEXT:    [[DOTHWASAN_SHADOW:%.*]] = call i8* asm "", "=r,0"(i8* null)
-; SCOPE-NEXT:    [[TMP1:%.*]] = alloca { i8, [15 x i8] }, align 16
-; SCOPE-NEXT:    [[TMP2:%.*]] = bitcast { i8, [15 x i8] }* [[TMP1]] to i8*
-; SCOPE-NEXT:    [[TMP3:%.*]] = call i8 @__hwasan_generate_tag()
-; SCOPE-NEXT:    [[TMP4:%.*]] = zext i8 [[TMP3]] to i64
-; SCOPE-NEXT:    [[TMP5:%.*]] = ptrtoint i8* [[TMP2]] to i64
-; SCOPE-NEXT:    [[TMP6:%.*]] = shl i64 [[TMP4]], 57
-; SCOPE-NEXT:    [[TMP7:%.*]] = or i64 [[TMP5]], [[TMP6]]
-; SCOPE-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP7]] to i8*
-; SCOPE-NEXT:    br label [[TMP8:%.*]]
-; SCOPE:       8:
+; SCOPE-NEXT:    [[TMP1:%.*]] = call i8* @llvm.thread.pointer()
+; SCOPE-NEXT:    [[TMP2:%.*]] = getelementptr i8, i8* [[TMP1]], i32 48
+; SCOPE-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to i64*
+; SCOPE-NEXT:    [[TMP4:%.*]] = load i64, i64* [[TMP3]], align 8
+; SCOPE-NEXT:    [[TMP5:%.*]] = ashr i64 [[TMP4]], 3
+; SCOPE-NEXT:    [[TMP6:%.*]] = call i64 @llvm.read_register.i64(metadata [[META1:![0-9]+]])
+; SCOPE-NEXT:    [[TMP7:%.*]] = call i8* @llvm.frameaddress.p0i8(i32 0)
+; SCOPE-NEXT:    [[TMP8:%.*]] = ptrtoint i8* [[TMP7]] to i64
+; SCOPE-NEXT:    [[TMP9:%.*]] = shl i64 [[TMP8]], 44
+; SCOPE-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP4]] to i64*
+; SCOPE-NEXT:    [[TMP11:%.*]] = or i64 [[TMP6]], [[TMP9]]
+; SCOPE-NEXT:    store i64 [[TMP11]], i64* [[TMP10]], align 8
+; SCOPE-NEXT:    [[TMP12:%.*]] = ashr i64 [[TMP4]], 56
+; SCOPE-NEXT:    [[TMP13:%.*]] = shl nuw nsw i64 [[TMP12]], 12
+; SCOPE-NEXT:    [[TMP14:%.*]] = xor i64 [[TMP13]], -1
+; SCOPE-NEXT:    [[TMP15:%.*]] = add i64 [[TMP4]], 8
+; SCOPE-NEXT:    [[TMP16:%.*]] = and i64 [[TMP15]], [[TMP14]]
+; SCOPE-NEXT:    store i64 [[TMP16]], i64* [[TMP3]], align 8
+; SCOPE-NEXT:    [[TMP17:%.*]] = or i64 [[TMP4]], 4294967295
+; SCOPE-NEXT:    [[HWASAN_SHADOW:%.*]] = add i64 [[TMP17]], 1
+; SCOPE-NEXT:    [[TMP18:%.*]] = inttoptr i64 [[HWASAN_SHADOW]] to i8*
+; SCOPE-NEXT:    [[TMP19:%.*]] = alloca { i8, [15 x i8] }, align 16
+; SCOPE-NEXT:    [[TMP20:%.*]] = bitcast { i8, [15 x i8] }* [[TMP19]] to i8*
+; SCOPE-NEXT:    [[TMP21:%.*]] = call i8 @__hwasan_generate_tag()
+; SCOPE-NEXT:    [[TMP22:%.*]] = zext i8 [[TMP21]] to i64
+; SCOPE-NEXT:    [[TMP23:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-NEXT:    [[TMP24:%.*]] = shl i64 [[TMP22]], 56
+; SCOPE-NEXT:    [[TMP25:%.*]] = or i64 [[TMP23]], [[TMP24]]
+; SCOPE-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP25]] to i8*
+; SCOPE-NEXT:    br label [[TMP26:%.*]]
+; SCOPE:       26:
 ; SCOPE-NEXT:    call void @llvm.lifetime.start.p0i8(i64 1, i8* nonnull [[ALLOCA_0_HWASAN]])
-; SCOPE-NEXT:    [[TMP9:%.*]] = trunc i64 [[TMP4]] to i8
-; SCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 [[TMP9]], i64 16)
-; SCOPE-NEXT:    [[TMP10:%.*]] = tail call i1 (...) @cond()
-; SCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 0, i64 16)
+; SCOPE-NEXT:    [[TMP27:%.*]] = trunc i64 [[TMP22]] to i8
+; SCOPE-NEXT:    [[TMP28:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-NEXT:    [[TMP29:%.*]] = lshr i64 [[TMP28]], 4
+; SCOPE-NEXT:    [[TMP30:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP29]]
+; SCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP30]], i8 [[TMP27]], i64 1, i1 false)
+; SCOPE-NEXT:    [[TMP31:%.*]] = tail call i1 (...) @cond()
+; SCOPE-NEXT:    [[TMP32:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-NEXT:    [[TMP33:%.*]] = lshr i64 [[TMP32]], 4
+; SCOPE-NEXT:    [[TMP34:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP33]]
+; SCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP34]], i8 0, i64 1, i1 false)
 ; SCOPE-NEXT:    call void @llvm.lifetime.end.p0i8(i64 1, i8* nonnull [[ALLOCA_0_HWASAN]])
-; SCOPE-NEXT:    br i1 [[TMP10]], label [[TMP11:%.*]], label [[TMP8]]
-; SCOPE:       11:
+; SCOPE-NEXT:    br i1 [[TMP31]], label [[TMP35:%.*]], label [[TMP26]]
+; SCOPE:       35:
 ; SCOPE-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
 ; SCOPE-NEXT:    ret i32 0
 ;
 ; NOSCOPE-LABEL: @standard_lifetime(
-; NOSCOPE-NEXT:    [[DOTHWASAN_SHADOW:%.*]] = call i8* asm "", "=r,0"(i8* null)
-; NOSCOPE-NEXT:    [[TMP1:%.*]] = alloca { i8, [15 x i8] }, align 16
-; NOSCOPE-NEXT:    [[TMP2:%.*]] = bitcast { i8, [15 x i8] }* [[TMP1]] to i8*
-; NOSCOPE-NEXT:    [[TMP3:%.*]] = call i8 @__hwasan_generate_tag()
-; NOSCOPE-NEXT:    [[TMP4:%.*]] = zext i8 [[TMP3]] to i64
-; NOSCOPE-NEXT:    [[TMP5:%.*]] = ptrtoint i8* [[TMP2]] to i64
-; NOSCOPE-NEXT:    [[TMP6:%.*]] = shl i64 [[TMP4]], 57
-; NOSCOPE-NEXT:    [[TMP7:%.*]] = or i64 [[TMP5]], [[TMP6]]
-; NOSCOPE-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP7]] to i8*
-; NOSCOPE-NEXT:    [[TMP8:%.*]] = trunc i64 [[TMP4]] to i8
-; NOSCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 [[TMP8]], i64 16)
-; NOSCOPE-NEXT:    br label [[TMP9:%.*]]
-; NOSCOPE:       9:
-; NOSCOPE-NEXT:    [[TMP10:%.*]] = tail call i1 (...) @cond()
-; NOSCOPE-NEXT:    br i1 [[TMP10]], label [[TMP11:%.*]], label [[TMP9]]
-; NOSCOPE:       11:
+; NOSCOPE-NEXT:    [[TMP1:%.*]] = call i8* @llvm.thread.pointer()
+; NOSCOPE-NEXT:    [[TMP2:%.*]] = getelementptr i8, i8* [[TMP1]], i32 48
+; NOSCOPE-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to i64*
+; NOSCOPE-NEXT:    [[TMP4:%.*]] = load i64, i64* [[TMP3]], align 8
+; NOSCOPE-NEXT:    [[TMP5:%.*]] = ashr i64 [[TMP4]], 3
+; NOSCOPE-NEXT:    [[TMP6:%.*]] = call i64 @llvm.read_register.i64(metadata [[META1:![0-9]+]])
+; NOSCOPE-NEXT:    [[TMP7:%.*]] = call i8* @llvm.frameaddress.p0i8(i32 0)
+; NOSCOPE-NEXT:    [[TMP8:%.*]] = ptrtoint i8* [[TMP7]] to i64
+; NOSCOPE-NEXT:    [[TMP9:%.*]] = shl i64 [[TMP8]], 44
+; NOSCOPE-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP4]] to i64*
+; NOSCOPE-NEXT:    [[TMP11:%.*]] = or i64 [[TMP6]], [[TMP9]]
+; NOSCOPE-NEXT:    store i64 [[TMP11]], i64* [[TMP10]], align 8
+; NOSCOPE-NEXT:    [[TMP12:%.*]] = ashr i64 [[TMP4]], 56
+; NOSCOPE-NEXT:    [[TMP13:%.*]] = shl nuw nsw i64 [[TMP12]], 12
+; NOSCOPE-NEXT:    [[TMP14:%.*]] = xor i64 [[TMP13]], -1
+; NOSCOPE-NEXT:    [[TMP15:%.*]] = add i64 [[TMP4]], 8
+; NOSCOPE-NEXT:    [[TMP16:%.*]] = and i64 [[TMP15]], [[TMP14]]
+; NOSCOPE-NEXT:    store i64 [[TMP16]], i64* [[TMP3]], align 8
+; NOSCOPE-NEXT:    [[TMP17:%.*]] = or i64 [[TMP4]], 4294967295
+; NOSCOPE-NEXT:    [[HWASAN_SHADOW:%.*]] = add i64 [[TMP17]], 1
+; NOSCOPE-NEXT:    [[TMP18:%.*]] = inttoptr i64 [[HWASAN_SHADOW]] to i8*
+; NOSCOPE-NEXT:    [[TMP19:%.*]] = alloca { i8, [15 x i8] }, align 16
+; NOSCOPE-NEXT:    [[TMP20:%.*]] = bitcast { i8, [15 x i8] }* [[TMP19]] to i8*
+; NOSCOPE-NEXT:    [[TMP21:%.*]] = call i8 @__hwasan_generate_tag()
+; NOSCOPE-NEXT:    [[TMP22:%.*]] = zext i8 [[TMP21]] to i64
+; NOSCOPE-NEXT:    [[TMP23:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-NEXT:    [[TMP24:%.*]] = shl i64 [[TMP22]], 56
+; NOSCOPE-NEXT:    [[TMP25:%.*]] = or i64 [[TMP23]], [[TMP24]]
+; NOSCOPE-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP25]] to i8*
+; NOSCOPE-NEXT:    [[TMP26:%.*]] = trunc i64 [[TMP22]] to i8
+; NOSCOPE-NEXT:    [[TMP27:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-NEXT:    [[TMP28:%.*]] = lshr i64 [[TMP27]], 4
+; NOSCOPE-NEXT:    [[TMP29:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP28]]
+; NOSCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP29]], i8 [[TMP26]], i64 1, i1 false)
+; NOSCOPE-NEXT:    br label [[TMP30:%.*]]
+; NOSCOPE:       30:
+; NOSCOPE-NEXT:    [[TMP31:%.*]] = tail call i1 (...) @cond()
+; NOSCOPE-NEXT:    br i1 [[TMP31]], label [[TMP32:%.*]], label [[TMP30]]
+; NOSCOPE:       32:
 ; NOSCOPE-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
-; NOSCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 0, i64 16)
+; NOSCOPE-NEXT:    [[TMP33:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-NEXT:    [[TMP34:%.*]] = lshr i64 [[TMP33]], 4
+; NOSCOPE-NEXT:    [[TMP35:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP34]]
+; NOSCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP35]], i8 0, i64 1, i1 false)
 ; NOSCOPE-NEXT:    ret i32 0
 ;
   %1 = alloca i8, align 1
@@ -70,47 +122,99 @@ define dso_local i32 @standard_lifetime() local_unnamed_addr sanitize_hwaddress 
 
 define dso_local i32 @standard_lifetime_optnone() local_unnamed_addr optnone noinline sanitize_hwaddress {
 ; SCOPE-LABEL: @standard_lifetime_optnone(
-; SCOPE-NEXT:    [[DOTHWASAN_SHADOW:%.*]] = call i8* asm "", "=r,0"(i8* null)
-; SCOPE-NEXT:    [[TMP1:%.*]] = alloca { i8, [15 x i8] }, align 16
-; SCOPE-NEXT:    [[TMP2:%.*]] = bitcast { i8, [15 x i8] }* [[TMP1]] to i8*
-; SCOPE-NEXT:    [[TMP3:%.*]] = call i8 @__hwasan_generate_tag()
-; SCOPE-NEXT:    [[TMP4:%.*]] = zext i8 [[TMP3]] to i64
-; SCOPE-NEXT:    [[TMP5:%.*]] = ptrtoint i8* [[TMP2]] to i64
-; SCOPE-NEXT:    [[TMP6:%.*]] = shl i64 [[TMP4]], 57
-; SCOPE-NEXT:    [[TMP7:%.*]] = or i64 [[TMP5]], [[TMP6]]
-; SCOPE-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP7]] to i8*
-; SCOPE-NEXT:    br label [[TMP8:%.*]]
-; SCOPE:       8:
+; SCOPE-NEXT:    [[TMP1:%.*]] = call i8* @llvm.thread.pointer()
+; SCOPE-NEXT:    [[TMP2:%.*]] = getelementptr i8, i8* [[TMP1]], i32 48
+; SCOPE-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to i64*
+; SCOPE-NEXT:    [[TMP4:%.*]] = load i64, i64* [[TMP3]], align 8
+; SCOPE-NEXT:    [[TMP5:%.*]] = ashr i64 [[TMP4]], 3
+; SCOPE-NEXT:    [[TMP6:%.*]] = call i64 @llvm.read_register.i64(metadata [[META1]])
+; SCOPE-NEXT:    [[TMP7:%.*]] = call i8* @llvm.frameaddress.p0i8(i32 0)
+; SCOPE-NEXT:    [[TMP8:%.*]] = ptrtoint i8* [[TMP7]] to i64
+; SCOPE-NEXT:    [[TMP9:%.*]] = shl i64 [[TMP8]], 44
+; SCOPE-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP4]] to i64*
+; SCOPE-NEXT:    [[TMP11:%.*]] = or i64 [[TMP6]], [[TMP9]]
+; SCOPE-NEXT:    store i64 [[TMP11]], i64* [[TMP10]], align 8
+; SCOPE-NEXT:    [[TMP12:%.*]] = ashr i64 [[TMP4]], 56
+; SCOPE-NEXT:    [[TMP13:%.*]] = shl nuw nsw i64 [[TMP12]], 12
+; SCOPE-NEXT:    [[TMP14:%.*]] = xor i64 [[TMP13]], -1
+; SCOPE-NEXT:    [[TMP15:%.*]] = add i64 [[TMP4]], 8
+; SCOPE-NEXT:    [[TMP16:%.*]] = and i64 [[TMP15]], [[TMP14]]
+; SCOPE-NEXT:    store i64 [[TMP16]], i64* [[TMP3]], align 8
+; SCOPE-NEXT:    [[TMP17:%.*]] = or i64 [[TMP4]], 4294967295
+; SCOPE-NEXT:    [[HWASAN_SHADOW:%.*]] = add i64 [[TMP17]], 1
+; SCOPE-NEXT:    [[TMP18:%.*]] = inttoptr i64 [[HWASAN_SHADOW]] to i8*
+; SCOPE-NEXT:    [[TMP19:%.*]] = alloca { i8, [15 x i8] }, align 16
+; SCOPE-NEXT:    [[TMP20:%.*]] = bitcast { i8, [15 x i8] }* [[TMP19]] to i8*
+; SCOPE-NEXT:    [[TMP21:%.*]] = call i8 @__hwasan_generate_tag()
+; SCOPE-NEXT:    [[TMP22:%.*]] = zext i8 [[TMP21]] to i64
+; SCOPE-NEXT:    [[TMP23:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-NEXT:    [[TMP24:%.*]] = shl i64 [[TMP22]], 56
+; SCOPE-NEXT:    [[TMP25:%.*]] = or i64 [[TMP23]], [[TMP24]]
+; SCOPE-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP25]] to i8*
+; SCOPE-NEXT:    br label [[TMP26:%.*]]
+; SCOPE:       26:
 ; SCOPE-NEXT:    call void @llvm.lifetime.start.p0i8(i64 1, i8* nonnull [[ALLOCA_0_HWASAN]])
-; SCOPE-NEXT:    [[TMP9:%.*]] = trunc i64 [[TMP4]] to i8
-; SCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 [[TMP9]], i64 16)
-; SCOPE-NEXT:    [[TMP10:%.*]] = tail call i1 (...) @cond()
-; SCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 0, i64 16)
+; SCOPE-NEXT:    [[TMP27:%.*]] = trunc i64 [[TMP22]] to i8
+; SCOPE-NEXT:    [[TMP28:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-NEXT:    [[TMP29:%.*]] = lshr i64 [[TMP28]], 4
+; SCOPE-NEXT:    [[TMP30:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP29]]
+; SCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP30]], i8 [[TMP27]], i64 1, i1 false)
+; SCOPE-NEXT:    [[TMP31:%.*]] = tail call i1 (...) @cond()
+; SCOPE-NEXT:    [[TMP32:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-NEXT:    [[TMP33:%.*]] = lshr i64 [[TMP32]], 4
+; SCOPE-NEXT:    [[TMP34:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP33]]
+; SCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP34]], i8 0, i64 1, i1 false)
 ; SCOPE-NEXT:    call void @llvm.lifetime.end.p0i8(i64 1, i8* nonnull [[ALLOCA_0_HWASAN]])
-; SCOPE-NEXT:    br i1 [[TMP10]], label [[TMP11:%.*]], label [[TMP8]]
-; SCOPE:       11:
+; SCOPE-NEXT:    br i1 [[TMP31]], label [[TMP35:%.*]], label [[TMP26]]
+; SCOPE:       35:
 ; SCOPE-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
 ; SCOPE-NEXT:    ret i32 0
 ;
 ; NOSCOPE-LABEL: @standard_lifetime_optnone(
-; NOSCOPE-NEXT:    [[DOTHWASAN_SHADOW:%.*]] = call i8* asm "", "=r,0"(i8* null)
-; NOSCOPE-NEXT:    [[TMP1:%.*]] = alloca { i8, [15 x i8] }, align 16
-; NOSCOPE-NEXT:    [[TMP2:%.*]] = bitcast { i8, [15 x i8] }* [[TMP1]] to i8*
-; NOSCOPE-NEXT:    [[TMP3:%.*]] = call i8 @__hwasan_generate_tag()
-; NOSCOPE-NEXT:    [[TMP4:%.*]] = zext i8 [[TMP3]] to i64
-; NOSCOPE-NEXT:    [[TMP5:%.*]] = ptrtoint i8* [[TMP2]] to i64
-; NOSCOPE-NEXT:    [[TMP6:%.*]] = shl i64 [[TMP4]], 57
-; NOSCOPE-NEXT:    [[TMP7:%.*]] = or i64 [[TMP5]], [[TMP6]]
-; NOSCOPE-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP7]] to i8*
-; NOSCOPE-NEXT:    [[TMP8:%.*]] = trunc i64 [[TMP4]] to i8
-; NOSCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 [[TMP8]], i64 16)
-; NOSCOPE-NEXT:    br label [[TMP9:%.*]]
-; NOSCOPE:       9:
-; NOSCOPE-NEXT:    [[TMP10:%.*]] = tail call i1 (...) @cond()
-; NOSCOPE-NEXT:    br i1 [[TMP10]], label [[TMP11:%.*]], label [[TMP9]]
-; NOSCOPE:       11:
+; NOSCOPE-NEXT:    [[TMP1:%.*]] = call i8* @llvm.thread.pointer()
+; NOSCOPE-NEXT:    [[TMP2:%.*]] = getelementptr i8, i8* [[TMP1]], i32 48
+; NOSCOPE-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to i64*
+; NOSCOPE-NEXT:    [[TMP4:%.*]] = load i64, i64* [[TMP3]], align 8
+; NOSCOPE-NEXT:    [[TMP5:%.*]] = ashr i64 [[TMP4]], 3
+; NOSCOPE-NEXT:    [[TMP6:%.*]] = call i64 @llvm.read_register.i64(metadata [[META1]])
+; NOSCOPE-NEXT:    [[TMP7:%.*]] = call i8* @llvm.frameaddress.p0i8(i32 0)
+; NOSCOPE-NEXT:    [[TMP8:%.*]] = ptrtoint i8* [[TMP7]] to i64
+; NOSCOPE-NEXT:    [[TMP9:%.*]] = shl i64 [[TMP8]], 44
+; NOSCOPE-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP4]] to i64*
+; NOSCOPE-NEXT:    [[TMP11:%.*]] = or i64 [[TMP6]], [[TMP9]]
+; NOSCOPE-NEXT:    store i64 [[TMP11]], i64* [[TMP10]], align 8
+; NOSCOPE-NEXT:    [[TMP12:%.*]] = ashr i64 [[TMP4]], 56
+; NOSCOPE-NEXT:    [[TMP13:%.*]] = shl nuw nsw i64 [[TMP12]], 12
+; NOSCOPE-NEXT:    [[TMP14:%.*]] = xor i64 [[TMP13]], -1
+; NOSCOPE-NEXT:    [[TMP15:%.*]] = add i64 [[TMP4]], 8
+; NOSCOPE-NEXT:    [[TMP16:%.*]] = and i64 [[TMP15]], [[TMP14]]
+; NOSCOPE-NEXT:    store i64 [[TMP16]], i64* [[TMP3]], align 8
+; NOSCOPE-NEXT:    [[TMP17:%.*]] = or i64 [[TMP4]], 4294967295
+; NOSCOPE-NEXT:    [[HWASAN_SHADOW:%.*]] = add i64 [[TMP17]], 1
+; NOSCOPE-NEXT:    [[TMP18:%.*]] = inttoptr i64 [[HWASAN_SHADOW]] to i8*
+; NOSCOPE-NEXT:    [[TMP19:%.*]] = alloca { i8, [15 x i8] }, align 16
+; NOSCOPE-NEXT:    [[TMP20:%.*]] = bitcast { i8, [15 x i8] }* [[TMP19]] to i8*
+; NOSCOPE-NEXT:    [[TMP21:%.*]] = call i8 @__hwasan_generate_tag()
+; NOSCOPE-NEXT:    [[TMP22:%.*]] = zext i8 [[TMP21]] to i64
+; NOSCOPE-NEXT:    [[TMP23:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-NEXT:    [[TMP24:%.*]] = shl i64 [[TMP22]], 56
+; NOSCOPE-NEXT:    [[TMP25:%.*]] = or i64 [[TMP23]], [[TMP24]]
+; NOSCOPE-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP25]] to i8*
+; NOSCOPE-NEXT:    [[TMP26:%.*]] = trunc i64 [[TMP22]] to i8
+; NOSCOPE-NEXT:    [[TMP27:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-NEXT:    [[TMP28:%.*]] = lshr i64 [[TMP27]], 4
+; NOSCOPE-NEXT:    [[TMP29:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP28]]
+; NOSCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP29]], i8 [[TMP26]], i64 1, i1 false)
+; NOSCOPE-NEXT:    br label [[TMP30:%.*]]
+; NOSCOPE:       30:
+; NOSCOPE-NEXT:    [[TMP31:%.*]] = tail call i1 (...) @cond()
+; NOSCOPE-NEXT:    br i1 [[TMP31]], label [[TMP32:%.*]], label [[TMP30]]
+; NOSCOPE:       32:
 ; NOSCOPE-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
-; NOSCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 0, i64 16)
+; NOSCOPE-NEXT:    [[TMP33:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-NEXT:    [[TMP34:%.*]] = lshr i64 [[TMP33]], 4
+; NOSCOPE-NEXT:    [[TMP35:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP34]]
+; NOSCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP35]], i8 0, i64 1, i1 false)
 ; NOSCOPE-NEXT:    ret i32 0
 ;
   %1 = alloca i8, align 1
@@ -131,37 +235,89 @@ define dso_local i32 @standard_lifetime_optnone() local_unnamed_addr optnone noi
 
 define dso_local i32 @multiple_lifetimes() local_unnamed_addr sanitize_hwaddress {
 ; SCOPE-LABEL: @multiple_lifetimes(
-; SCOPE-NEXT:    [[DOTHWASAN_SHADOW:%.*]] = call i8* asm "", "=r,0"(i8* null)
-; SCOPE-NEXT:    [[TMP1:%.*]] = alloca { i8, [15 x i8] }, align 16
-; SCOPE-NEXT:    [[TMP2:%.*]] = bitcast { i8, [15 x i8] }* [[TMP1]] to i8*
-; SCOPE-NEXT:    [[TMP3:%.*]] = call i8 @__hwasan_generate_tag()
-; SCOPE-NEXT:    [[TMP4:%.*]] = zext i8 [[TMP3]] to i64
-; SCOPE-NEXT:    [[TMP5:%.*]] = ptrtoint i8* [[TMP2]] to i64
-; SCOPE-NEXT:    [[TMP6:%.*]] = shl i64 [[TMP4]], 57
-; SCOPE-NEXT:    [[TMP7:%.*]] = or i64 [[TMP5]], [[TMP6]]
-; SCOPE-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP7]] to i8*
-; SCOPE-NEXT:    [[TMP8:%.*]] = trunc i64 [[TMP4]] to i8
-; SCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 [[TMP8]], i64 16)
+; SCOPE-NEXT:    [[TMP1:%.*]] = call i8* @llvm.thread.pointer()
+; SCOPE-NEXT:    [[TMP2:%.*]] = getelementptr i8, i8* [[TMP1]], i32 48
+; SCOPE-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to i64*
+; SCOPE-NEXT:    [[TMP4:%.*]] = load i64, i64* [[TMP3]], align 8
+; SCOPE-NEXT:    [[TMP5:%.*]] = ashr i64 [[TMP4]], 3
+; SCOPE-NEXT:    [[TMP6:%.*]] = call i64 @llvm.read_register.i64(metadata [[META1]])
+; SCOPE-NEXT:    [[TMP7:%.*]] = call i8* @llvm.frameaddress.p0i8(i32 0)
+; SCOPE-NEXT:    [[TMP8:%.*]] = ptrtoint i8* [[TMP7]] to i64
+; SCOPE-NEXT:    [[TMP9:%.*]] = shl i64 [[TMP8]], 44
+; SCOPE-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP4]] to i64*
+; SCOPE-NEXT:    [[TMP11:%.*]] = or i64 [[TMP6]], [[TMP9]]
+; SCOPE-NEXT:    store i64 [[TMP11]], i64* [[TMP10]], align 8
+; SCOPE-NEXT:    [[TMP12:%.*]] = ashr i64 [[TMP4]], 56
+; SCOPE-NEXT:    [[TMP13:%.*]] = shl nuw nsw i64 [[TMP12]], 12
+; SCOPE-NEXT:    [[TMP14:%.*]] = xor i64 [[TMP13]], -1
+; SCOPE-NEXT:    [[TMP15:%.*]] = add i64 [[TMP4]], 8
+; SCOPE-NEXT:    [[TMP16:%.*]] = and i64 [[TMP15]], [[TMP14]]
+; SCOPE-NEXT:    store i64 [[TMP16]], i64* [[TMP3]], align 8
+; SCOPE-NEXT:    [[TMP17:%.*]] = or i64 [[TMP4]], 4294967295
+; SCOPE-NEXT:    [[HWASAN_SHADOW:%.*]] = add i64 [[TMP17]], 1
+; SCOPE-NEXT:    [[TMP18:%.*]] = inttoptr i64 [[HWASAN_SHADOW]] to i8*
+; SCOPE-NEXT:    [[TMP19:%.*]] = alloca { i8, [15 x i8] }, align 16
+; SCOPE-NEXT:    [[TMP20:%.*]] = bitcast { i8, [15 x i8] }* [[TMP19]] to i8*
+; SCOPE-NEXT:    [[TMP21:%.*]] = call i8 @__hwasan_generate_tag()
+; SCOPE-NEXT:    [[TMP22:%.*]] = zext i8 [[TMP21]] to i64
+; SCOPE-NEXT:    [[TMP23:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-NEXT:    [[TMP24:%.*]] = shl i64 [[TMP22]], 56
+; SCOPE-NEXT:    [[TMP25:%.*]] = or i64 [[TMP23]], [[TMP24]]
+; SCOPE-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP25]] to i8*
+; SCOPE-NEXT:    [[TMP26:%.*]] = trunc i64 [[TMP22]] to i8
+; SCOPE-NEXT:    [[TMP27:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-NEXT:    [[TMP28:%.*]] = lshr i64 [[TMP27]], 4
+; SCOPE-NEXT:    [[TMP29:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP28]]
+; SCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP29]], i8 [[TMP26]], i64 1, i1 false)
 ; SCOPE-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
 ; SCOPE-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
-; SCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 0, i64 16)
+; SCOPE-NEXT:    [[TMP30:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-NEXT:    [[TMP31:%.*]] = lshr i64 [[TMP30]], 4
+; SCOPE-NEXT:    [[TMP32:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP31]]
+; SCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP32]], i8 0, i64 1, i1 false)
 ; SCOPE-NEXT:    ret i32 0
 ;
 ; NOSCOPE-LABEL: @multiple_lifetimes(
-; NOSCOPE-NEXT:    [[DOTHWASAN_SHADOW:%.*]] = call i8* asm "", "=r,0"(i8* null)
-; NOSCOPE-NEXT:    [[TMP1:%.*]] = alloca { i8, [15 x i8] }, align 16
-; NOSCOPE-NEXT:    [[TMP2:%.*]] = bitcast { i8, [15 x i8] }* [[TMP1]] to i8*
-; NOSCOPE-NEXT:    [[TMP3:%.*]] = call i8 @__hwasan_generate_tag()
-; NOSCOPE-NEXT:    [[TMP4:%.*]] = zext i8 [[TMP3]] to i64
-; NOSCOPE-NEXT:    [[TMP5:%.*]] = ptrtoint i8* [[TMP2]] to i64
-; NOSCOPE-NEXT:    [[TMP6:%.*]] = shl i64 [[TMP4]], 57
-; NOSCOPE-NEXT:    [[TMP7:%.*]] = or i64 [[TMP5]], [[TMP6]]
-; NOSCOPE-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP7]] to i8*
-; NOSCOPE-NEXT:    [[TMP8:%.*]] = trunc i64 [[TMP4]] to i8
-; NOSCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 [[TMP8]], i64 16)
+; NOSCOPE-NEXT:    [[TMP1:%.*]] = call i8* @llvm.thread.pointer()
+; NOSCOPE-NEXT:    [[TMP2:%.*]] = getelementptr i8, i8* [[TMP1]], i32 48
+; NOSCOPE-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to i64*
+; NOSCOPE-NEXT:    [[TMP4:%.*]] = load i64, i64* [[TMP3]], align 8
+; NOSCOPE-NEXT:    [[TMP5:%.*]] = ashr i64 [[TMP4]], 3
+; NOSCOPE-NEXT:    [[TMP6:%.*]] = call i64 @llvm.read_register.i64(metadata [[META1]])
+; NOSCOPE-NEXT:    [[TMP7:%.*]] = call i8* @llvm.frameaddress.p0i8(i32 0)
+; NOSCOPE-NEXT:    [[TMP8:%.*]] = ptrtoint i8* [[TMP7]] to i64
+; NOSCOPE-NEXT:    [[TMP9:%.*]] = shl i64 [[TMP8]], 44
+; NOSCOPE-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP4]] to i64*
+; NOSCOPE-NEXT:    [[TMP11:%.*]] = or i64 [[TMP6]], [[TMP9]]
+; NOSCOPE-NEXT:    store i64 [[TMP11]], i64* [[TMP10]], align 8
+; NOSCOPE-NEXT:    [[TMP12:%.*]] = ashr i64 [[TMP4]], 56
+; NOSCOPE-NEXT:    [[TMP13:%.*]] = shl nuw nsw i64 [[TMP12]], 12
+; NOSCOPE-NEXT:    [[TMP14:%.*]] = xor i64 [[TMP13]], -1
+; NOSCOPE-NEXT:    [[TMP15:%.*]] = add i64 [[TMP4]], 8
+; NOSCOPE-NEXT:    [[TMP16:%.*]] = and i64 [[TMP15]], [[TMP14]]
+; NOSCOPE-NEXT:    store i64 [[TMP16]], i64* [[TMP3]], align 8
+; NOSCOPE-NEXT:    [[TMP17:%.*]] = or i64 [[TMP4]], 4294967295
+; NOSCOPE-NEXT:    [[HWASAN_SHADOW:%.*]] = add i64 [[TMP17]], 1
+; NOSCOPE-NEXT:    [[TMP18:%.*]] = inttoptr i64 [[HWASAN_SHADOW]] to i8*
+; NOSCOPE-NEXT:    [[TMP19:%.*]] = alloca { i8, [15 x i8] }, align 16
+; NOSCOPE-NEXT:    [[TMP20:%.*]] = bitcast { i8, [15 x i8] }* [[TMP19]] to i8*
+; NOSCOPE-NEXT:    [[TMP21:%.*]] = call i8 @__hwasan_generate_tag()
+; NOSCOPE-NEXT:    [[TMP22:%.*]] = zext i8 [[TMP21]] to i64
+; NOSCOPE-NEXT:    [[TMP23:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-NEXT:    [[TMP24:%.*]] = shl i64 [[TMP22]], 56
+; NOSCOPE-NEXT:    [[TMP25:%.*]] = or i64 [[TMP23]], [[TMP24]]
+; NOSCOPE-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP25]] to i8*
+; NOSCOPE-NEXT:    [[TMP26:%.*]] = trunc i64 [[TMP22]] to i8
+; NOSCOPE-NEXT:    [[TMP27:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-NEXT:    [[TMP28:%.*]] = lshr i64 [[TMP27]], 4
+; NOSCOPE-NEXT:    [[TMP29:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP28]]
+; NOSCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP29]], i8 [[TMP26]], i64 1, i1 false)
 ; NOSCOPE-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
 ; NOSCOPE-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
-; NOSCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 0, i64 16)
+; NOSCOPE-NEXT:    [[TMP30:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-NEXT:    [[TMP31:%.*]] = lshr i64 [[TMP30]], 4
+; NOSCOPE-NEXT:    [[TMP32:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP31]]
+; NOSCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP32]], i8 0, i64 1, i1 false)
 ; NOSCOPE-NEXT:    ret i32 0
 ;
   %1 = alloca i8, align 1
@@ -178,48 +334,106 @@ define dso_local i32 @multiple_lifetimes() local_unnamed_addr sanitize_hwaddress
 
 define dso_local i32 @unreachable_exit() local_unnamed_addr sanitize_hwaddress {
 ; SCOPE-LABEL: @unreachable_exit(
-; SCOPE-NEXT:    [[DOTHWASAN_SHADOW:%.*]] = call i8* asm "", "=r,0"(i8* null)
-; SCOPE-NEXT:    [[TMP1:%.*]] = alloca { i8, [15 x i8] }, align 16
-; SCOPE-NEXT:    [[TMP2:%.*]] = bitcast { i8, [15 x i8] }* [[TMP1]] to i8*
-; SCOPE-NEXT:    [[TMP3:%.*]] = call i8 @__hwasan_generate_tag()
-; SCOPE-NEXT:    [[TMP4:%.*]] = zext i8 [[TMP3]] to i64
-; SCOPE-NEXT:    [[TMP5:%.*]] = ptrtoint i8* [[TMP2]] to i64
-; SCOPE-NEXT:    [[TMP6:%.*]] = shl i64 [[TMP4]], 57
-; SCOPE-NEXT:    [[TMP7:%.*]] = or i64 [[TMP5]], [[TMP6]]
-; SCOPE-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP7]] to i8*
+; SCOPE-NEXT:    [[TMP1:%.*]] = call i8* @llvm.thread.pointer()
+; SCOPE-NEXT:    [[TMP2:%.*]] = getelementptr i8, i8* [[TMP1]], i32 48
+; SCOPE-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to i64*
+; SCOPE-NEXT:    [[TMP4:%.*]] = load i64, i64* [[TMP3]], align 8
+; SCOPE-NEXT:    [[TMP5:%.*]] = ashr i64 [[TMP4]], 3
+; SCOPE-NEXT:    [[TMP6:%.*]] = call i64 @llvm.read_register.i64(metadata [[META1]])
+; SCOPE-NEXT:    [[TMP7:%.*]] = call i8* @llvm.frameaddress.p0i8(i32 0)
+; SCOPE-NEXT:    [[TMP8:%.*]] = ptrtoint i8* [[TMP7]] to i64
+; SCOPE-NEXT:    [[TMP9:%.*]] = shl i64 [[TMP8]], 44
+; SCOPE-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP4]] to i64*
+; SCOPE-NEXT:    [[TMP11:%.*]] = or i64 [[TMP6]], [[TMP9]]
+; SCOPE-NEXT:    store i64 [[TMP11]], i64* [[TMP10]], align 8
+; SCOPE-NEXT:    [[TMP12:%.*]] = ashr i64 [[TMP4]], 56
+; SCOPE-NEXT:    [[TMP13:%.*]] = shl nuw nsw i64 [[TMP12]], 12
+; SCOPE-NEXT:    [[TMP14:%.*]] = xor i64 [[TMP13]], -1
+; SCOPE-NEXT:    [[TMP15:%.*]] = add i64 [[TMP4]], 8
+; SCOPE-NEXT:    [[TMP16:%.*]] = and i64 [[TMP15]], [[TMP14]]
+; SCOPE-NEXT:    store i64 [[TMP16]], i64* [[TMP3]], align 8
+; SCOPE-NEXT:    [[TMP17:%.*]] = or i64 [[TMP4]], 4294967295
+; SCOPE-NEXT:    [[HWASAN_SHADOW:%.*]] = add i64 [[TMP17]], 1
+; SCOPE-NEXT:    [[TMP18:%.*]] = inttoptr i64 [[HWASAN_SHADOW]] to i8*
+; SCOPE-NEXT:    [[TMP19:%.*]] = alloca { i8, [15 x i8] }, align 16
+; SCOPE-NEXT:    [[TMP20:%.*]] = bitcast { i8, [15 x i8] }* [[TMP19]] to i8*
+; SCOPE-NEXT:    [[TMP21:%.*]] = call i8 @__hwasan_generate_tag()
+; SCOPE-NEXT:    [[TMP22:%.*]] = zext i8 [[TMP21]] to i64
+; SCOPE-NEXT:    [[TMP23:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-NEXT:    [[TMP24:%.*]] = shl i64 [[TMP22]], 56
+; SCOPE-NEXT:    [[TMP25:%.*]] = or i64 [[TMP23]], [[TMP24]]
+; SCOPE-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP25]] to i8*
 ; SCOPE-NEXT:    call void @llvm.lifetime.start.p0i8(i64 1, i8* nonnull [[ALLOCA_0_HWASAN]])
-; SCOPE-NEXT:    [[TMP8:%.*]] = trunc i64 [[TMP4]] to i8
-; SCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 [[TMP8]], i64 16)
-; SCOPE-NEXT:    [[TMP9:%.*]] = tail call i1 (...) @cond()
-; SCOPE-NEXT:    br i1 [[TMP9]], label [[TMP10:%.*]], label [[TMP11:%.*]]
-; SCOPE:       10:
+; SCOPE-NEXT:    [[TMP26:%.*]] = trunc i64 [[TMP22]] to i8
+; SCOPE-NEXT:    [[TMP27:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-NEXT:    [[TMP28:%.*]] = lshr i64 [[TMP27]], 4
+; SCOPE-NEXT:    [[TMP29:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP28]]
+; SCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP29]], i8 [[TMP26]], i64 1, i1 false)
+; SCOPE-NEXT:    [[TMP30:%.*]] = tail call i1 (...) @cond()
+; SCOPE-NEXT:    br i1 [[TMP30]], label [[TMP31:%.*]], label [[TMP35:%.*]]
+; SCOPE:       31:
 ; SCOPE-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
-; SCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 0, i64 16)
+; SCOPE-NEXT:    [[TMP32:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-NEXT:    [[TMP33:%.*]] = lshr i64 [[TMP32]], 4
+; SCOPE-NEXT:    [[TMP34:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP33]]
+; SCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP34]], i8 0, i64 1, i1 false)
 ; SCOPE-NEXT:    ret i32 0
-; SCOPE:       11:
-; SCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 0, i64 16)
+; SCOPE:       35:
+; SCOPE-NEXT:    [[TMP36:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; SCOPE-NEXT:    [[TMP37:%.*]] = lshr i64 [[TMP36]], 4
+; SCOPE-NEXT:    [[TMP38:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP37]]
+; SCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP38]], i8 0, i64 1, i1 false)
 ; SCOPE-NEXT:    ret i32 0
 ;
 ; NOSCOPE-LABEL: @unreachable_exit(
-; NOSCOPE-NEXT:    [[DOTHWASAN_SHADOW:%.*]] = call i8* asm "", "=r,0"(i8* null)
-; NOSCOPE-NEXT:    [[TMP1:%.*]] = alloca { i8, [15 x i8] }, align 16
-; NOSCOPE-NEXT:    [[TMP2:%.*]] = bitcast { i8, [15 x i8] }* [[TMP1]] to i8*
-; NOSCOPE-NEXT:    [[TMP3:%.*]] = call i8 @__hwasan_generate_tag()
-; NOSCOPE-NEXT:    [[TMP4:%.*]] = zext i8 [[TMP3]] to i64
-; NOSCOPE-NEXT:    [[TMP5:%.*]] = ptrtoint i8* [[TMP2]] to i64
-; NOSCOPE-NEXT:    [[TMP6:%.*]] = shl i64 [[TMP4]], 57
-; NOSCOPE-NEXT:    [[TMP7:%.*]] = or i64 [[TMP5]], [[TMP6]]
-; NOSCOPE-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP7]] to i8*
-; NOSCOPE-NEXT:    [[TMP8:%.*]] = trunc i64 [[TMP4]] to i8
-; NOSCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 [[TMP8]], i64 16)
-; NOSCOPE-NEXT:    [[TMP9:%.*]] = tail call i1 (...) @cond()
-; NOSCOPE-NEXT:    br i1 [[TMP9]], label [[TMP10:%.*]], label [[TMP11:%.*]]
-; NOSCOPE:       10:
+; NOSCOPE-NEXT:    [[TMP1:%.*]] = call i8* @llvm.thread.pointer()
+; NOSCOPE-NEXT:    [[TMP2:%.*]] = getelementptr i8, i8* [[TMP1]], i32 48
+; NOSCOPE-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to i64*
+; NOSCOPE-NEXT:    [[TMP4:%.*]] = load i64, i64* [[TMP3]], align 8
+; NOSCOPE-NEXT:    [[TMP5:%.*]] = ashr i64 [[TMP4]], 3
+; NOSCOPE-NEXT:    [[TMP6:%.*]] = call i64 @llvm.read_register.i64(metadata [[META1]])
+; NOSCOPE-NEXT:    [[TMP7:%.*]] = call i8* @llvm.frameaddress.p0i8(i32 0)
+; NOSCOPE-NEXT:    [[TMP8:%.*]] = ptrtoint i8* [[TMP7]] to i64
+; NOSCOPE-NEXT:    [[TMP9:%.*]] = shl i64 [[TMP8]], 44
+; NOSCOPE-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP4]] to i64*
+; NOSCOPE-NEXT:    [[TMP11:%.*]] = or i64 [[TMP6]], [[TMP9]]
+; NOSCOPE-NEXT:    store i64 [[TMP11]], i64* [[TMP10]], align 8
+; NOSCOPE-NEXT:    [[TMP12:%.*]] = ashr i64 [[TMP4]], 56
+; NOSCOPE-NEXT:    [[TMP13:%.*]] = shl nuw nsw i64 [[TMP12]], 12
+; NOSCOPE-NEXT:    [[TMP14:%.*]] = xor i64 [[TMP13]], -1
+; NOSCOPE-NEXT:    [[TMP15:%.*]] = add i64 [[TMP4]], 8
+; NOSCOPE-NEXT:    [[TMP16:%.*]] = and i64 [[TMP15]], [[TMP14]]
+; NOSCOPE-NEXT:    store i64 [[TMP16]], i64* [[TMP3]], align 8
+; NOSCOPE-NEXT:    [[TMP17:%.*]] = or i64 [[TMP4]], 4294967295
+; NOSCOPE-NEXT:    [[HWASAN_SHADOW:%.*]] = add i64 [[TMP17]], 1
+; NOSCOPE-NEXT:    [[TMP18:%.*]] = inttoptr i64 [[HWASAN_SHADOW]] to i8*
+; NOSCOPE-NEXT:    [[TMP19:%.*]] = alloca { i8, [15 x i8] }, align 16
+; NOSCOPE-NEXT:    [[TMP20:%.*]] = bitcast { i8, [15 x i8] }* [[TMP19]] to i8*
+; NOSCOPE-NEXT:    [[TMP21:%.*]] = call i8 @__hwasan_generate_tag()
+; NOSCOPE-NEXT:    [[TMP22:%.*]] = zext i8 [[TMP21]] to i64
+; NOSCOPE-NEXT:    [[TMP23:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-NEXT:    [[TMP24:%.*]] = shl i64 [[TMP22]], 56
+; NOSCOPE-NEXT:    [[TMP25:%.*]] = or i64 [[TMP23]], [[TMP24]]
+; NOSCOPE-NEXT:    [[ALLOCA_0_HWASAN:%.*]] = inttoptr i64 [[TMP25]] to i8*
+; NOSCOPE-NEXT:    [[TMP26:%.*]] = trunc i64 [[TMP22]] to i8
+; NOSCOPE-NEXT:    [[TMP27:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-NEXT:    [[TMP28:%.*]] = lshr i64 [[TMP27]], 4
+; NOSCOPE-NEXT:    [[TMP29:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP28]]
+; NOSCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP29]], i8 [[TMP26]], i64 1, i1 false)
+; NOSCOPE-NEXT:    [[TMP30:%.*]] = tail call i1 (...) @cond()
+; NOSCOPE-NEXT:    br i1 [[TMP30]], label [[TMP31:%.*]], label [[TMP35:%.*]]
+; NOSCOPE:       31:
 ; NOSCOPE-NEXT:    call void @use(i8* nonnull [[ALLOCA_0_HWASAN]])
-; NOSCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 0, i64 16)
+; NOSCOPE-NEXT:    [[TMP32:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-NEXT:    [[TMP33:%.*]] = lshr i64 [[TMP32]], 4
+; NOSCOPE-NEXT:    [[TMP34:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP33]]
+; NOSCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP34]], i8 0, i64 1, i1 false)
 ; NOSCOPE-NEXT:    ret i32 0
-; NOSCOPE:       11:
-; NOSCOPE-NEXT:    call void @__hwasan_tag_memory(i8* [[TMP2]], i8 0, i64 16)
+; NOSCOPE:       35:
+; NOSCOPE-NEXT:    [[TMP36:%.*]] = ptrtoint i8* [[TMP20]] to i64
+; NOSCOPE-NEXT:    [[TMP37:%.*]] = lshr i64 [[TMP36]], 4
+; NOSCOPE-NEXT:    [[TMP38:%.*]] = getelementptr i8, i8* [[TMP18]], i64 [[TMP37]]
+; NOSCOPE-NEXT:    call void @llvm.memset.p0i8.i64(i8* align 1 [[TMP38]], i8 0, i64 1, i1 false)
 ; NOSCOPE-NEXT:    ret i32 0
 ;
   %1 = alloca i8, align 1
