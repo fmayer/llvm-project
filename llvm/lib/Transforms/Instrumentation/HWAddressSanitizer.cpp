@@ -13,6 +13,7 @@
 
 #include "llvm/Transforms/Instrumentation/HWAddressSanitizer.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
@@ -1301,6 +1302,11 @@ bool HWAddressSanitizer::instrumentLandingPads(
   return true;
 }
 
+static bool isLifetimeIntrinsic(Value *V) {
+  auto *II = dyn_cast<IntrinsicInst>(V);
+  return II && II->isLifetimeStartOrEnd();
+}
+
 bool HWAddressSanitizer::instrumentStack(
     memtag::StackInfo &SInfo, Value *StackTag,
     llvm::function_ref<const DominatorTree &()> GetDT,
@@ -1326,8 +1332,49 @@ bool HWAddressSanitizer::instrumentStack(
         AI->hasName() ? AI->getName().str() : "alloca." + itostr(N);
     Replacement->setName(Name + ".hwasan");
 
-    AI->replaceUsesWithIf(Replacement,
-                          [AILong](Use &U) { return U.getUser() != AILong; });
+    size_t Size = memtag::getAllocaSizeInBytes(*AI);
+    size_t AlignedSize = alignTo(Size, Mapping.getObjectAlignment());
+
+    IRBuilder<> IntrIRB(AI->getNextNode());
+    Value *AICast = IntrIRB.CreatePointerCast(AI, Int8PtrTy);
+    auto IsNonConstantOffset = [&](IntrinsicInst *II) {
+      int64_t UnusedOffset;
+      return GetPointerBaseWithConstantOffset(II->getArgOperand(1), UnusedOffset,
+      II->getModule()->getDataLayout()) != AI;
+    };
+    if (llvm::any_of(Info.LifetimeStart, IsNonConstantOffset) || llvm::any_of(Info.LifetimeEnd, IsNonConstantOffset)) {
+      // If we cannot statically determine the offset of any lifetime
+      // intrinsict, we expand all of them to cover the full alloca. This is
+      // needed to keep the tags and the lifetimes consistent.
+      auto ExpandSize = [&](IntrinsicInst *II) {
+        II->setArgOperand(0, ConstantInt::get(Int64Ty, AlignedSize));
+        II->setArgOperand(1, AICast);
+      };
+      llvm::for_each(Info.LifetimeStart, ExpandSize);
+      llvm::for_each(Info.LifetimeEnd, ExpandSize);
+    } else {
+      auto HandleLifetime = [&](IntrinsicInst *II) {
+        int64_t Offset;
+        auto *BasePtr = GetPointerBaseWithConstantOffset(
+            II->getArgOperand(1), Offset, II->getModule()->getDataLayout());
+
+        assert(BasePtr == AI);
+        Value *NewPtr = AICast;
+        if (Offset > 0) {
+          IRBuilder<> IntrIRB(II);
+          NewPtr = IntrIRB.CreateConstGEP1_32(Int8PtrTy, NewPtr, Offset);
+        }
+        II->setArgOperand(1, NewPtr);
+      };
+
+      llvm::for_each(Info.LifetimeStart, HandleLifetime);
+      llvm::for_each(Info.LifetimeEnd, HandleLifetime);
+    }
+    AI->replaceUsesWithIf(Replacement, [AICast, AILong](Use &U) {
+      auto *User = U.getUser();
+      return User != AILong && User != AICast &&
+             !isLifetimeIntrinsic(User);
+    });
 
     for (auto *DDI : Info.DbgVariableIntrinsics) {
       // Prepend "tag_offset, N" to the dwarf expression.
@@ -1341,8 +1388,6 @@ bool HWAddressSanitizer::instrumentStack(
                                                           NewOps, LocNo));
     }
 
-    size_t Size = memtag::getAllocaSizeInBytes(*AI);
-    size_t AlignedSize = alignTo(Size, Mapping.getObjectAlignment());
     auto TagEnd = [&](Instruction *Node) {
       IRB.SetInsertPoint(Node);
       Value *UARTag = getUARTag(IRB, StackTag);
