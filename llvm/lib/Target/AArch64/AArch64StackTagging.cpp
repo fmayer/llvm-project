@@ -558,6 +558,25 @@ bool AArch64StackTagging::runOnFunction(Function &Fn) {
         memtag::isStandardLifetime(Info.LifetimeStart, Info.LifetimeEnd, DT,
                                    ClMaxLifetimes) &&
         !SInfo.CallsReturnTwice;
+    uint64_t AllocaSize = Info.AI->getAllocationSizeInBits(*DL).getValue() / 8;
+
+    Value *AICast = IRB.CreatePointerCast(AI, IRB.getInt8PtrTy());
+    auto HandleLifetime = [&](IntrinsicInst *II) {
+      // Set the lifetime intrinsic to cover the whole alloca. This reduces the
+      // set of assumptions we need to make about the lifetime. Without this we
+      // would need to ensure that we can track the lifetime pointer to a
+      // constant offset from the alloca, and would still need to change the
+      // size to include the extra alignment we use for the untagging to make
+      // the size consistent.
+      //
+      // The check for standard lifetime below makes sure that we have exactly
+      // one set of start / end in any execution (i.e. the ends are not
+      // reachable from each other), so this will not cause any problems.
+      II->setArgOperand(0, ConstantInt::get(IRB.getInt64Ty(), AllocaSize));
+      II->setArgOperand(1, AICast);
+    };
+    llvm::for_each(Info.LifetimeStart, HandleLifetime);
+    llvm::for_each(Info.LifetimeEnd, HandleLifetime);
     if (StandardLifetime) {
       IntrinsicInst *Start = Info.LifetimeStart[0];
       uint64_t Size =
