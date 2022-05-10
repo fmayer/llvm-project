@@ -356,6 +356,40 @@ def extract_version(s):
   x = float(s[idx + 1:])
   return x
 
+def exists_or_none(path):
+  return path if os.path.exists(path) else None
+
+# llvm-symbolizer binary.
+# 1. --symbolizer flag
+# 2. environment variable
+# 3. unsuffixed binary in the current directory
+# 4. if inside Android platform, prebuilt binary at a known path
+# 5. first "llvm-symbolizer", then "llvm-symbolizer-$VER" with the
+#    highest available version in $PATH
+def symbolizer_path_candidates(args):
+  yield args.symbolizer
+  yield os.environ.get('LLVM_SYMBOLIZER_PATH')
+  yield os.environ.get('HWASAN_SYMBOLIZER_PATH')
+
+  s = os.path.join(os.path.dirname(sys.argv[0]), 'llvm-symbolizer')
+  yield exists_or_none(s)
+
+  if 'ANDROID_BUILD_TOP' in os.environ:
+    s = os.path.join(os.environ['ANDROID_BUILD_TOP'],
+                     'prebuilts/clang/host/linux-x86/llvm-binutils-stable/'
+                     'llvm-symbolizer')
+    yield exists_or_none(s)
+
+  for path in os.environ["PATH"].split(os.pathsep):
+    p = os.path.join(path, 'llvm-symbolizer')
+    yield exists_or_none(s)
+
+  for path in os.environ["PATH"].split(os.pathsep):
+    candidates = glob.glob(os.path.join(path, 'llvm-symbolizer-*'))
+    if len(candidates) > 0:
+      candidates.sort(key = extract_version, reverse = True)
+      yield candidates[0]
+
 def main():
   parser = argparse.ArgumentParser()
   parser.add_argument('-d', action='store_true')
@@ -390,46 +424,10 @@ def main():
     if 'ANDROID_BUILD_TOP' in os.environ:
       paths_to_cut.append(os.environ['ANDROID_BUILD_TOP'] + '/')
 
-  # llvm-symbolizer binary.
-  # 1. --symbolizer flag
-  # 2. environment variable
-  # 3. unsuffixed binary in the current directory
-  # 4. if inside Android platform, prebuilt binary at a known path
-  # 5. first "llvm-symbolizer", then "llvm-symbolizer-$VER" with the
-  #    highest available version in $PATH
-  symbolizer_path = args.symbolizer
-  if not symbolizer_path:
-    if 'LLVM_SYMBOLIZER_PATH' in os.environ:
-      symbolizer_path = os.environ['LLVM_SYMBOLIZER_PATH']
-    elif 'HWASAN_SYMBOLIZER_PATH' in os.environ:
-      symbolizer_path = os.environ['HWASAN_SYMBOLIZER_PATH']
-
-  if not symbolizer_path:
-    s = os.path.join(os.path.dirname(sys.argv[0]), 'llvm-symbolizer')
-    if os.path.exists(s):
-      symbolizer_path = s
-
-  if not symbolizer_path:
-    if 'ANDROID_BUILD_TOP' in os.environ:
-      s = os.path.join(os.environ['ANDROID_BUILD_TOP'], 'prebuilts/clang/host/linux-x86/llvm-binutils-stable/llvm-symbolizer')
-      if os.path.exists(s):
-        symbolizer_path = s
-
-  if not symbolizer_path:
-    for path in os.environ["PATH"].split(os.pathsep):
-      p = os.path.join(path, 'llvm-symbolizer')
-      if os.path.exists(p):
-        symbolizer_path = p
-        break
-
-  if not symbolizer_path:
-    for path in os.environ["PATH"].split(os.pathsep):
-      candidates = glob.glob(os.path.join(path, 'llvm-symbolizer-*'))
-      if len(candidates) > 0:
-        candidates.sort(key = extract_version, reverse = True)
-        symbolizer_path = candidates[0]
-        break
-
+  symbolizer_path = next(filter(None, symbolizer_path_candidates(args)), None)
+  if symbolizer_path is None:
+    print("Could not find llvm-symbolizer.", file=sys.stderr)
+    sys.exit(1)
   if not os.path.exists(symbolizer_path):
     print("Symbolizer path does not exist:", symbolizer_path, file=sys.stderr)
     sys.exit(1)
