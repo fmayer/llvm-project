@@ -34,7 +34,7 @@ public:
   typedef typename A::sint_t sint_t;
 
   static int stepWithDwarf(A &addressSpace, pint_t pc, pint_t fdeStart,
-                           R &registers, bool &isSignalFrame);
+                           R &registers, bool &isSignalFrame, bool clean);
 
 private:
 
@@ -189,7 +189,7 @@ bool DwarfInstructions<A, R>::getRA_SIGN_STATE(A &addressSpace, R registers,
 template <typename A, typename R>
 int DwarfInstructions<A, R>::stepWithDwarf(A &addressSpace, pint_t pc,
                                            pint_t fdeStart, R &registers,
-                                           bool &isSignalFrame) {
+                                           bool &isSignalFrame, bool clean) {
   FDE_Info fdeInfo;
   CIE_Info cieInfo;
   if (CFI_Parser<A>::decodeFDE(addressSpace, fdeStart, &fdeInfo,
@@ -200,7 +200,18 @@ int DwarfInstructions<A, R>::stepWithDwarf(A &addressSpace, pint_t pc,
       // get pointer to cfa (architecture specific)
       pint_t cfa = getCFA(addressSpace, prolog, registers);
 
-       // restore registers that DWARF says were saved
+#if defined(_LIBUNWIND_TARGET_AARCH64)
+      if (clean && cieInfo.mteTaggedFrame) {
+        // We can round up the SP to multiple-of-16 because all MTE tagged
+        // stack allocations have to be aligned to 16.
+        pint_t sp = registers.getSP();
+        pint_t p = sp + (16 - (sp % 16));
+        for (; p < cfa; p += 16) {
+          __asm__ __volatile__(".arch_extension memtag\nstg %[Ptr], [%[Ptr]]\n" :: [Ptr] "r"(p) : "memory");
+        }
+      }
+#endif
+      // restore registers that DWARF says were saved
       R newRegisters = registers;
 
       // Typically, the CFA is the stack pointer at the call site in
