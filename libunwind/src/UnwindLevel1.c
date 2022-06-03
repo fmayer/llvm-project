@@ -182,16 +182,16 @@ unwind_phase2(unw_context_t *uc, unw_cursor_t *cursor, _Unwind_Exception *except
 
     // Ask libunwind to get next frame (skip over first which is
     // _Unwind_RaiseException).
-    int stepResult = __unw_step(cursor);
+    int stepResult = __unw_clean_step(cursor);
     if (stepResult == 0) {
       _LIBUNWIND_TRACE_UNWINDING(
-          "unwind_phase2(ex_ojb=%p): __unw_step() reached "
+          "unwind_phase2(ex_ojb=%p): __unw_clean_step() reached "
           "bottom => _URC_END_OF_STACK",
           (void *)exception_object);
       return _URC_END_OF_STACK;
     } else if (stepResult < 0) {
       _LIBUNWIND_TRACE_UNWINDING(
-          "unwind_phase2(ex_ojb=%p): __unw_step failed => "
+          "unwind_phase2(ex_ojb=%p): __unw_clean_step failed => "
           "_URC_FATAL_PHASE1_ERROR",
           (void *)exception_object);
       return _URC_FATAL_PHASE2_ERROR;
@@ -296,14 +296,15 @@ unwind_phase2_forced(unw_context_t *uc, unw_cursor_t *cursor,
   // frame walked is unwind_phase2_forced.
   unsigned framesWalked = 1;
   // Walk each frame until we reach where search phase said to stop
-  while (__unw_step(cursor) > 0) {
+  while (__unw_clean_step(cursor) > 0) {
 
     // Update info about this frame.
     unw_proc_info_t frameInfo;
     if (__unw_get_proc_info(cursor, &frameInfo) != UNW_ESUCCESS) {
-      _LIBUNWIND_TRACE_UNWINDING("unwind_phase2_forced(ex_ojb=%p): __unw_step "
-                                 "failed => _URC_END_OF_STACK",
-                                 (void *)exception_object);
+      _LIBUNWIND_TRACE_UNWINDING(
+          "unwind_phase2_forced(ex_ojb=%p): __unw_clean_step "
+          "failed => _URC_END_OF_STACK",
+          (void *)exception_object);
       return _URC_FATAL_PHASE2_ERROR;
     }
 
