@@ -12,10 +12,14 @@
 
 #include "llvm/Transforms/Utils/MemoryTaggingSupport.h"
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/CFG.h"
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/Analysis/ValueTracking.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include <utility>
 
 namespace llvm {
 namespace memtag {
@@ -46,17 +50,46 @@ bool forAllReachableExits(const DominatorTree &DT, const PostDominatorTree &PDT,
     Callback(Ends[0]);
     return true;
   }
+  if (!Ends.empty()) {
+    DT.updateDFSNumbers();
+  }
+
+  SmallVector<std::pair<unsigned int, unsigned int>, 2> CoveredIntervals;
+  for (auto *End : Ends) {
+    auto *Node = DT.getNode(End->getParent());
+    unsigned int ThisMin = Node->getDFSNumIn();
+    unsigned int ThisMax = Node->getDFSNumOut();
+    auto *It = llvm::find_if(CoveredIntervals, [&](const auto& P) {
+      unsigned int OtherMin = P.first;
+      unsigned int OtherMax = P.second;
+      return ThisMin <= OtherMax && ThisMax >= OtherMin;
+    });
+    if (It == CoveredIntervals.end()) {
+      CoveredIntervals.emplace_back(std::make_pair(ThisMin, ThisMax));
+    } else {
+      It->first = std::min(It->first, ThisMin);
+      It->second = std::max(It->first, ThisMax);
+    }
+  }
+
   SmallVector<Instruction *, 8> ReachableRetVec;
   unsigned NumCoveredExits = 0;
   for (auto *RI : RetVec) {
     if (!isPotentiallyReachable(Start, RI, nullptr, &DT))
       continue;
     ReachableRetVec.push_back(RI);
-    // TODO(fmayer): We don't support diamond shapes, where multiple lifetime
-    // ends together dominate the RI, but none of them does by itself.
-    // Check how often this happens and decide whether to support this here.
-    if (llvm::any_of(Ends, [&](auto *End) { return DT.dominates(End, RI); }))
-      ++NumCoveredExits;
+
+    auto *Node = DT.getNode(RI->getParent());
+    unsigned int ThisMin = Node->getDFSNumIn();
+    unsigned int ThisMax = Node->getDFSNumOut();
+    if (llvm::find_if(CoveredIntervals, [&](const auto& P) {
+      unsigned int OtherMin = P.first;
+      unsigned int OtherMax = P.second;
+      return OtherMin <= ThisMin && ThisMax <= OtherMax;
+    }) != CoveredIntervals.end()) {
+      NumCoveredExits++;
+    }
+
   }
   // If there's a mix of covered and non-covered exits, just put the untag
   // on exits, so we avoid the redundancy of untagging twice.
