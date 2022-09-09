@@ -9,8 +9,8 @@ int main() {
   buffer[subscript] = 42;
 // CHECK: AddressSanitizer: stack-buffer-overflow on address [[ADDR:0x[0-9a-f]+]]
 // CHECK: WRITE of size 1 at [[ADDR]] thread T0
-// CHECK-NEXT: {{#0 .* main .*stack_array_right_oob.cpp}}:[[@LINE-3]]
+// CHECK-NEXT: {{#0 .* main .*stack_array_oob_after.cpp}}:[[@LINE-3]]
 // CHECK: Address [[ADDR]] is located in stack of thread T0 at offset [[OFFSET:.*]] in frame
-// CHECK-NEXT: {{#0 .* main .*stack_array_right_oob.cpp}}
+// CHECK-NEXT: {{#0 .* main .*stack_array_oob_after.cpp}}
 // CHECK: 'buffer'{{.*}} <== Memory access at offset [[OFFSET]] overflows this variable
 }

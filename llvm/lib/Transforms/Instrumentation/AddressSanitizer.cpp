@@ -2265,8 +2265,9 @@ bool ModuleAddressSanitizer::InstrumentGlobals(IRBuilder<> &IRB, Module &M,
 
     Type *Ty = G->getValueType();
     const uint64_t SizeInBytes = DL.getTypeAllocSize(Ty);
-    const uint64_t RightRedzoneSize = getRedzoneSizeForGlobal(SizeInBytes);
-    Type *RightRedZoneTy = ArrayType::get(IRB.getInt8Ty(), RightRedzoneSize);
+    const uint64_t SucceedingRedzoneSize = getRedzoneSizeForGlobal(SizeInBytes);
+    Type *RightRedZoneTy =
+        ArrayType::get(IRB.getInt8Ty(), SucceedingRedzoneSize);
 
     StructType *NewTy = StructType::get(Ty, RightRedZoneTy);
     Constant *NewInitializer = ConstantStruct::get(
@@ -2346,7 +2347,7 @@ bool ModuleAddressSanitizer::InstrumentGlobals(IRBuilder<> &IRB, Module &M,
         GlobalStructTy,
         ConstantExpr::getPointerCast(InstrumentedGlobal, IntptrTy),
         ConstantInt::get(IntptrTy, SizeInBytes),
-        ConstantInt::get(IntptrTy, SizeInBytes + RightRedzoneSize),
+        ConstantInt::get(IntptrTy, SizeInBytes + SucceedingRedzoneSize),
         ConstantExpr::getPointerCast(Name, IntptrTy),
         ConstantExpr::getPointerCast(ModuleName, IntptrTy),
         ConstantInt::get(IntptrTy, MD.IsDynInit),

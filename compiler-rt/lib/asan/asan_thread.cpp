@@ -349,13 +349,13 @@ bool AsanThread::GetStackFrameAccessByAddr(uptr addr,
   u8 *shadow_bottom = (u8*)MemToShadow(bottom);
 
   while (shadow_ptr >= shadow_bottom &&
-         *shadow_ptr != kAsanStackLeftRedzoneMagic) {
+         *shadow_ptr != kAsanStackFrontRedzoneMagic) {
     shadow_ptr--;
     mem_ptr -= ASAN_SHADOW_GRANULARITY;
   }
 
   while (shadow_ptr >= shadow_bottom &&
-         *shadow_ptr == kAsanStackLeftRedzoneMagic) {
+         *shadow_ptr == kAsanStackFrontRedzoneMagic) {
     shadow_ptr--;
     mem_ptr -= ASAN_SHADOW_GRANULARITY;
   }
@@ -390,9 +390,9 @@ uptr AsanThread::GetStackVariableShadowStart(uptr addr) {
   u8 *shadow_bottom = (u8*)MemToShadow(bottom);
 
   while (shadow_ptr >= shadow_bottom &&
-         (*shadow_ptr != kAsanStackLeftRedzoneMagic &&
+         (*shadow_ptr != kAsanStackFrontRedzoneMagic &&
           *shadow_ptr != kAsanStackMidRedzoneMagic &&
-          *shadow_ptr != kAsanStackRightRedzoneMagic))
+          *shadow_ptr != kAsanStackBackRedzoneMagic))
     shadow_ptr--;
 
   return (uptr)shadow_ptr + 1;

@@ -410,7 +410,7 @@ ErrorGeneric::ErrorGeneric(u32 tid, uptr pc_, uptr bp_, uptr sp_, uptr addr,
       // If we are accessing 16 bytes, look at the second shadow byte.
       if (*shadow_addr == 0 && access_size > ASAN_SHADOW_GRANULARITY)
         shadow_addr++;
-      // If we are in the partial right redzone, look at the next shadow byte.
+      // If we are in the partial front redzone, look at the next shadow byte.
       if (*shadow_addr > 0 && *shadow_addr < 128) shadow_addr++;
       bool far_from_bounds = false;
       shadow_val = *shadow_addr;
@@ -418,7 +418,7 @@ ErrorGeneric::ErrorGeneric(u32 tid, uptr pc_, uptr bp_, uptr sp_, uptr addr,
       // For use-after-frees reads are almost as bad as writes.
       int read_after_free_bonus = 0;
       switch (shadow_val) {
-        case kAsanHeapLeftRedzoneMagic:
+        case kAsanHeapFrontRedzoneMagic:
         case kAsanArrayCookieMagic:
           bug_descr = "heap-buffer-overflow";
           bug_type_score = 10;
@@ -429,7 +429,7 @@ ErrorGeneric::ErrorGeneric(u32 tid, uptr pc_, uptr bp_, uptr sp_, uptr addr,
           bug_type_score = 20;
           if (!is_write) read_after_free_bonus = 18;
           break;
-        case kAsanStackLeftRedzoneMagic:
+        case kAsanStackFrontRedzoneMagic:
           bug_descr = "stack-buffer-underflow";
           bug_type_score = 25;
           far_from_bounds = AdjacentShadowValuesAreFullyPoisoned(shadow_addr);
@@ -439,7 +439,7 @@ ErrorGeneric::ErrorGeneric(u32 tid, uptr pc_, uptr bp_, uptr sp_, uptr addr,
           bug_type_score = 1;
           break;
         case kAsanStackMidRedzoneMagic:
-        case kAsanStackRightRedzoneMagic:
+        case kAsanStackBackRedzoneMagic:
           bug_descr = "stack-buffer-overflow";
           bug_type_score = 25;
           far_from_bounds = AdjacentShadowValuesAreFullyPoisoned(shadow_addr);
@@ -470,8 +470,8 @@ ErrorGeneric::ErrorGeneric(u32 tid, uptr pc_, uptr bp_, uptr sp_, uptr addr,
           bug_descr = "intra-object-overflow";
           bug_type_score = 10;
           break;
-        case kAsanAllocaLeftMagic:
-        case kAsanAllocaRightMagic:
+        case kAsanAllocaFrontMagic:
+        case kAsanAllocaBackMagic:
           bug_descr = "dynamic-stack-buffer-overflow";
           bug_type_score = 25;
           far_from_bounds = AdjacentShadowValuesAreFullyPoisoned(shadow_addr);
@@ -506,33 +506,30 @@ static void PrintLegend(InternalScopedString *str) {
   for (u8 i = 1; i < ASAN_SHADOW_GRANULARITY; i++)
     PrintShadowByte(str, "", i, " ");
   str->append("\n");
-  PrintShadowByte(str, "  Heap left redzone:       ",
-                  kAsanHeapLeftRedzoneMagic);
-  PrintShadowByte(str, "  Freed heap region:       ", kAsanHeapFreeMagic);
-  PrintShadowByte(str, "  Stack left redzone:      ",
-                  kAsanStackLeftRedzoneMagic);
-  PrintShadowByte(str, "  Stack mid redzone:       ",
+  PrintShadowByte(str, "  Heap front redzone:    ", kAsanHeapFrontRedzoneMagic);
+  PrintShadowByte(str, "  Freed heap region:         ", kAsanHeapFreeMagic);
+  PrintShadowByte(str, "  Stack front redzone:   ", kAsanStackFrontRedzoneMagic);
+  PrintShadowByte(str, "  Stack mid redzone:         ",
                   kAsanStackMidRedzoneMagic);
-  PrintShadowByte(str, "  Stack right redzone:     ",
-                  kAsanStackRightRedzoneMagic);
-  PrintShadowByte(str, "  Stack after return:      ",
+  PrintShadowByte(str, "  Stack back redzone:  ", kAsanStackBackRedzoneMagic);
+  PrintShadowByte(str, "  Stack after return:        ",
                   kAsanStackAfterReturnMagic);
-  PrintShadowByte(str, "  Stack use after scope:   ",
+  PrintShadowByte(str, "  Stack use after scope:     ",
                   kAsanStackUseAfterScopeMagic);
-  PrintShadowByte(str, "  Global redzone:          ", kAsanGlobalRedzoneMagic);
-  PrintShadowByte(str, "  Global init order:       ",
+  PrintShadowByte(str, "  Global redzone:            ", kAsanGlobalRedzoneMagic);
+  PrintShadowByte(str, "  Global init order:         ",
                   kAsanInitializationOrderMagic);
-  PrintShadowByte(str, "  Poisoned by user:        ",
+  PrintShadowByte(str, "  Poisoned by user:          ",
                   kAsanUserPoisonedMemoryMagic);
-  PrintShadowByte(str, "  Container overflow:      ",
+  PrintShadowByte(str, "  Container overflow:        ",
                   kAsanContiguousContainerOOBMagic);
-  PrintShadowByte(str, "  Array cookie:            ",
+  PrintShadowByte(str, "  Array cookie:              ",
                   kAsanArrayCookieMagic);
-  PrintShadowByte(str, "  Intra object redzone:    ",
+  PrintShadowByte(str, "  Intra object redzone:      ",
                   kAsanIntraObjectRedzone);
-  PrintShadowByte(str, "  ASan internal:           ", kAsanInternalHeapMagic);
-  PrintShadowByte(str, "  Left alloca redzone:     ", kAsanAllocaLeftMagic);
-  PrintShadowByte(str, "  Right alloca redzone:    ", kAsanAllocaRightMagic);
+  PrintShadowByte(str, "  ASan internal:             ", kAsanInternalHeapMagic);
+  PrintShadowByte(str, "  Front alloca redzone:  ", kAsanAllocaFrontMagic);
+  PrintShadowByte(str, "  Back alloca redzone: ", kAsanAllocaBackMagic);
 }
 
 static void PrintShadowBytes(InternalScopedString *str, const char *before,

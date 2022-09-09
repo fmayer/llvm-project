@@ -17,8 +17,8 @@ ShadowBytesToString(ArrayRef<uint8_t> ShadowBytes) {
   std::ostringstream os;
   for (size_t i = 0, n = ShadowBytes.size(); i < n; i++) {
     switch (ShadowBytes[i]) {
-      case kAsanStackLeftRedzoneMagic:    os << "L"; break;
-      case kAsanStackRightRedzoneMagic:   os << "R"; break;
+      case kAsanStackFrontRedzoneMagic:    os << "F"; break;
+      case kAsanStackBackRedzoneMagic:   os << "B"; break;
       case kAsanStackMidRedzoneMagic:     os << "M"; break;
       case kAsanStackUseAfterScopeMagic:
         os << "S";
@@ -69,65 +69,65 @@ TEST(ASanStackFrameLayout, Test) {
   VAR(a, 105, 103, 1, 0);
   VAR(a, 200, 97, 1, 0);
 
-  TEST_LAYOUT({a1_1}, 8, 16, "1 16 1 4 a1_1", "LL1R", "LL1R");
-  TEST_LAYOUT({a1_1}, 16, 16, "1 16 1 4 a1_1", "L1R", "L1R");
-  TEST_LAYOUT({a1_1}, 32, 32, "1 32 1 4 a1_1", "L1R", "L1R");
-  TEST_LAYOUT({a1_1}, 64, 64, "1 64 1 4 a1_1", "L1R", "L1R");
-  TEST_LAYOUT({p1_32}, 8, 32, "1 32 1 8 p1_32:15", "LLLL1RRR", "LLLL1RRR");
-  TEST_LAYOUT({p1_32}, 8, 64, "1 64 1 8 p1_32:15", "LLLLLLLL1RRRRRRR",
-              "LLLLLLLL1RRRRRRR");
+  TEST_LAYOUT({a1_1}, 8, 16, "1 16 1 4 a1_1", "FF1B", "FF1B");
+  TEST_LAYOUT({a1_1}, 16, 16, "1 16 1 4 a1_1", "F1B", "F1B");
+  TEST_LAYOUT({a1_1}, 32, 32, "1 32 1 4 a1_1", "F1B", "F1B");
+  TEST_LAYOUT({a1_1}, 64, 64, "1 64 1 4 a1_1", "F1B", "F1B");
+  TEST_LAYOUT({p1_32}, 8, 32, "1 32 1 8 p1_32:15", "FFFF1BBB", "FFFF1BBB");
+  TEST_LAYOUT({p1_32}, 8, 64, "1 64 1 8 p1_32:15", "FFFFFFFF1BBBBBBB",
+              "FFFFFFFF1BBBBBBB");
 
-  TEST_LAYOUT({a1_1}, 8, 32, "1 32 1 4 a1_1", "LLLL1RRR", "LLLL1RRR");
-  TEST_LAYOUT({a2_1}, 8, 32, "1 32 2 4 a2_1", "LLLL2RRR", "LLLL2RRR");
-  TEST_LAYOUT({a3_1}, 8, 32, "1 32 3 4 a3_1", "LLLL3RRR", "LLLL3RRR");
-  TEST_LAYOUT({a4_1}, 8, 32, "1 32 4 4 a4_1", "LLLL4RRR", "LLLL4RRR");
-  TEST_LAYOUT({a7_1}, 8, 32, "1 32 7 4 a7_1", "LLLL7RRR", "LLLL7RRR");
-  TEST_LAYOUT({a8_1}, 8, 32, "1 32 8 4 a8_1", "LLLL0RRR", "LLLLSRRR");
-  TEST_LAYOUT({a9_1}, 8, 32, "1 32 9 4 a9_1", "LLLL01RR", "LLLL01RR");
-  TEST_LAYOUT({a16_1}, 8, 32, "1 32 16 5 a16_1", "LLLL00RR", "LLLLSSRR");
+  TEST_LAYOUT({a1_1}, 8, 32, "1 32 1 4 a1_1", "FFFF1BBB", "FFFF1BBB");
+  TEST_LAYOUT({a2_1}, 8, 32, "1 32 2 4 a2_1", "FFFF2BBB", "FFFF2BBB");
+  TEST_LAYOUT({a3_1}, 8, 32, "1 32 3 4 a3_1", "FFFF3BBB", "FFFF3BBB");
+  TEST_LAYOUT({a4_1}, 8, 32, "1 32 4 4 a4_1", "FFFF4BBB", "FFFF4BBB");
+  TEST_LAYOUT({a7_1}, 8, 32, "1 32 7 4 a7_1", "FFFF7BBB", "FFFF7BBB");
+  TEST_LAYOUT({a8_1}, 8, 32, "1 32 8 4 a8_1", "FFFF0BBB", "FFFFSBBB");
+  TEST_LAYOUT({a9_1}, 8, 32, "1 32 9 4 a9_1", "FFFF01BB", "FFFF01BB");
+  TEST_LAYOUT({a16_1}, 8, 32, "1 32 16 5 a16_1", "FFFF00BB", "FFFFSSBB");
   TEST_LAYOUT({p1_256}, 8, 32, "1 256 1 11 p1_256:2700",
-              "LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL1RRR",
-              "LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL1RRR");
-  TEST_LAYOUT({a41_1}, 8, 32, "1 32 41 7 a41_1:7", "LLLL000001RRRRRR",
-              "LLLLSS0001RRRRRR");
-  TEST_LAYOUT({a105_1}, 8, 32, "1 32 105 6 a105_1", "LLLL00000000000001RRRRRR",
-              "LLLLSSSSSSSSSSSSS1RRRRRR");
+              "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF1BBB",
+              "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF1BBB");
+  TEST_LAYOUT({a41_1}, 8, 32, "1 32 41 7 a41_1:7", "FFFF000001BBBBBB",
+              "FFFFSS0001BBBBBB");
+  TEST_LAYOUT({a105_1}, 8, 32, "1 32 105 6 a105_1", "FFFF00000000000001BBBBBB",
+              "FFFFSSSSSSSSSSSSS1BBBBBB");
 
   {
     SmallVector<ASanStackVariableDescription, 10> t = {a1_1, p1_256};
     TEST_LAYOUT(t, 8, 32, "2 256 1 11 p1_256:2700 272 1 4 a1_1",
-                "LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL1M1R",
-                "LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL1M1R");
+                "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF1M1B",
+                "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF1M1B");
   }
 
   {
     SmallVector<ASanStackVariableDescription, 10> t = {a1_1, a16_1, a41_1};
     TEST_LAYOUT(t, 8, 32, "3 32 1 4 a1_1 48 16 5 a16_1 80 41 7 a41_1:7",
-                "LLLL1M00MM000001RRRR", "LLLL1MSSMMSS0001RRRR");
+                "FFFF1M00MM000001BBBB", "FFFF1MSSMMSS0001BBBB");
   }
 
-  TEST_LAYOUT({a2_1}, 32, 32, "1 32 2 4 a2_1", "L2R", "L2R");
-  TEST_LAYOUT({a9_1}, 32, 32, "1 32 9 4 a9_1", "L9R", "L9R");
-  TEST_LAYOUT({a16_1}, 32, 32, "1 32 16 5 a16_1", "L16R", "LSR");
+  TEST_LAYOUT({a2_1}, 32, 32, "1 32 2 4 a2_1", "F2B", "F2B");
+  TEST_LAYOUT({a9_1}, 32, 32, "1 32 9 4 a9_1", "F9B", "F9B");
+  TEST_LAYOUT({a16_1}, 32, 32, "1 32 16 5 a16_1", "F16B", "FSB");
   TEST_LAYOUT({p1_256}, 32, 32, "1 256 1 11 p1_256:2700",
-              "LLLLLLLL1R", "LLLLLLLL1R");
-  TEST_LAYOUT({a41_1}, 32, 32, "1 32 41 7 a41_1:7", "L09R",
-              "LS9R");
-  TEST_LAYOUT({a105_1}, 32, 32, "1 32 105 6 a105_1", "L0009R",
-              "LSSSSR");
-  TEST_LAYOUT({a200_1}, 32, 32, "1 32 200 6 a200_1", "L0000008RR",
-              "LSSSS008RR");
+              "FFFFFFFF1B", "FFFFFFFF1B");
+  TEST_LAYOUT({a41_1}, 32, 32, "1 32 41 7 a41_1:7", "F09B",
+              "FS9B");
+  TEST_LAYOUT({a105_1}, 32, 32, "1 32 105 6 a105_1", "F0009B",
+              "FSSSSB");
+  TEST_LAYOUT({a200_1}, 32, 32, "1 32 200 6 a200_1", "F0000008BB",
+              "FSSSS008BB");
 
   {
     SmallVector<ASanStackVariableDescription, 10> t = {a1_1, p1_256};
     TEST_LAYOUT(t, 32, 32, "2 256 1 11 p1_256:2700 320 1 4 a1_1",
-                "LLLLLLLL1M1R", "LLLLLLLL1M1R");
+                "FFFFFFFF1M1B", "FFFFFFFF1M1B");
   }
 
   {
     SmallVector<ASanStackVariableDescription, 10> t = {a1_1, a16_1, a41_1};
     TEST_LAYOUT(t, 32, 32, "3 32 1 4 a1_1 96 16 5 a16_1 160 41 7 a41_1:7",
-                "L1M16M09R", "L1MSMS9R");
+                "F1M16M09B", "F1MSMS9B");
   }
 #undef VAR
 #undef TEST_LAYOUT

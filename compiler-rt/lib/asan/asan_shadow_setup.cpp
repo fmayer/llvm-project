@@ -86,7 +86,7 @@ void InitializeShadowMemory() {
   if (Verbosity()) PrintAddressSpaceLayout();
 
   if (full_shadow_is_available) {
-    // mmap the low shadow plus at least one page at the left.
+    // mmap the low shadow plus at least one front page.
     if (kLowShadowBeg)
       ReserveShadowMemoryRange(shadow_start, kLowShadowEnd, "low shadow");
     // mmap the high shadow.
@@ -98,7 +98,7 @@ void InitializeShadowMemory() {
              MemoryRangeIsAvailable(shadow_start, kMidMemBeg - 1) &&
              MemoryRangeIsAvailable(kMidMemEnd + 1, kHighShadowEnd)) {
     CHECK(kLowShadowBeg != kLowShadowEnd);
-    // mmap the low shadow plus at least one page at the left.
+    // mmap the low shadow plus at least one front page.
     ReserveShadowMemoryRange(shadow_start, kLowShadowEnd, "low shadow");
     // mmap the mid shadow.
     ReserveShadowMemoryRange(kMidShadowBeg, kMidShadowEnd, "mid shadow");

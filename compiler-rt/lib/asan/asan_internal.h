@@ -137,11 +137,11 @@ extern bool replace_intrin_cached;
 extern void (*death_callback)(void);
 // These magic values are written to shadow for better error
 // reporting.
-const int kAsanHeapLeftRedzoneMagic = 0xfa;
+const int kAsanHeapFrontRedzoneMagic = 0xfa;
 const int kAsanHeapFreeMagic = 0xfd;
-const int kAsanStackLeftRedzoneMagic = 0xf1;
+const int kAsanStackFrontRedzoneMagic = 0xf1;
 const int kAsanStackMidRedzoneMagic = 0xf2;
-const int kAsanStackRightRedzoneMagic = 0xf3;
+const int kAsanStackBackRedzoneMagic = 0xf3;
 const int kAsanStackAfterReturnMagic = 0xf5;
 const int kAsanInitializationOrderMagic = 0xf6;
 const int kAsanUserPoisonedMemoryMagic = 0xf7;
@@ -151,8 +151,8 @@ const int kAsanGlobalRedzoneMagic = 0xf9;
 const int kAsanInternalHeapMagic = 0xfe;
 const int kAsanArrayCookieMagic = 0xac;
 const int kAsanIntraObjectRedzone = 0xbb;
-const int kAsanAllocaLeftMagic = 0xca;
-const int kAsanAllocaRightMagic = 0xcb;
+const int kAsanAllocaFrontMagic = 0xca;
+const int kAsanAllocaBackMagic = 0xcb;
 
 static const uptr kCurrentStackFrameMagic = 0x41B58AB3;
 static const uptr kRetiredStackFrameMagic = 0x45E0360E;

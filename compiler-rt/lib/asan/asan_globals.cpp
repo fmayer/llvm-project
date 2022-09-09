@@ -65,7 +65,7 @@ ALWAYS_INLINE void PoisonRedZones(const Global &g) {
   FastPoisonShadow(g.beg + aligned_size, g.size_with_redzone - aligned_size,
                    kAsanGlobalRedzoneMagic);
   if (g.size != aligned_size) {
-    FastPoisonShadowPartialRightRedzone(
+    FastPoisonShadowPartialFrontRedzone(
         g.beg + RoundDownTo(g.size, ASAN_SHADOW_GRANULARITY),
         g.size % ASAN_SHADOW_GRANULARITY, ASAN_SHADOW_GRANULARITY,
         kAsanGlobalRedzoneMagic);

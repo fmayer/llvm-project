@@ -15,7 +15,7 @@ int test_function() {
   buffer[hide(-(1 + (int)sizeof(void*) / 4))].x = 42;
 // CHECK: AddressSanitizer: heap-buffer-overflow on address [[ADDR:0x[0-9a-f]+]]
 // CHECK: WRITE of size 4 at [[ADDR]] thread T0
-// CHECK-NEXT: test_function {{.*}}dll_operator_array_new_with_dtor_left_oob.cpp:[[@LINE-3]]
+// CHECK-NEXT: test_function {{.*}}dll_operator_array_new_with_dtor_oob_before.cpp:[[@LINE-3]]
 // CHECK-NEXT: main {{.*}}dll_host.cpp
 //
 // FIXME: Currently it says "4 bytes ... left of 172-byte region",
@@ -27,7 +27,7 @@ int test_function() {
 // FIXME: The operator new frame should have [].
 // CHECK-LABEL: allocated by thread T0 here:
 // CHECK:        operator new
-// CHECK-NEXT:   test_function {{.*}}dll_operator_array_new_with_dtor_left_oob.cpp:[[@LINE-16]]
+// CHECK-NEXT:   test_function {{.*}}dll_operator_array_new_with_dtor_oob_before.cpp:[[@LINE-16]]
 // CHECK-NEXT:   main {{.*}}dll_host.cpp
 // CHECK-LABEL: SUMMARY
   delete [] buffer;

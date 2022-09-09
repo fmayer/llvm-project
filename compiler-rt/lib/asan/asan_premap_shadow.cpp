@@ -29,8 +29,8 @@ uptr PremapShadowSize() {
   return RoundUpTo(GetMaxVirtualAddress() >> ASAN_SHADOW_SCALE, granularity);
 }
 
-// Returns an address aligned to 8 pages, such that one page on the left and
-// PremapShadowSize() bytes on the right of it are mapped r/o.
+// Returns an address aligned to 8 pages, such that one front page and
+// PremapShadowSize() back bytes are mapped r/o.
 uptr PremapShadow() {
   return MapDynamicShadow(PremapShadowSize(), /*mmap_alignment_scale*/ 3,
                           /*min_shadow_base_alignment*/ 0, kHighMemEnd);

@@ -49,14 +49,14 @@ class Decorator : public __sanitizer::SanitizerCommonDecorator {
 
   const char *ShadowByte(u8 byte) {
     switch (byte) {
-      case kAsanHeapLeftRedzoneMagic:
+      case kAsanHeapFrontRedzoneMagic:
       case kAsanArrayCookieMagic:
         return Red();
       case kAsanHeapFreeMagic:
         return Magenta();
-      case kAsanStackLeftRedzoneMagic:
+      case kAsanStackFrontRedzoneMagic:
       case kAsanStackMidRedzoneMagic:
-      case kAsanStackRightRedzoneMagic:
+      case kAsanStackBackRedzoneMagic:
         return Red();
       case kAsanStackAfterReturnMagic:
         return Magenta();
@@ -64,8 +64,8 @@ class Decorator : public __sanitizer::SanitizerCommonDecorator {
         return Cyan();
       case kAsanUserPoisonedMemoryMagic:
       case kAsanContiguousContainerOOBMagic:
-      case kAsanAllocaLeftMagic:
-      case kAsanAllocaRightMagic:
+      case kAsanAllocaFrontMagic:
+      case kAsanAllocaBackMagic:
         return Blue();
       case kAsanStackUseAfterScopeMagic:
         return Magenta();
@@ -101,8 +101,8 @@ bool GetShadowAddressInformation(uptr addr, ShadowAddressDescription *descr);
 bool DescribeAddressIfShadow(uptr addr);
 
 enum AccessType {
-  kAccessTypeLeft,
-  kAccessTypeRight,
+  kAccessTypeBefore,
+  kAccessTypeAfter,
   kAccessTypeInside,
   kAccessTypeUnknown,  // This means we have an AddressSanitizer bug!
 };

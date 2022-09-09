@@ -72,7 +72,7 @@ class AsanChunkView {
     }
     return false;
   }
-  bool AddrIsAtLeft(uptr addr, uptr access_size, sptr *offset) const {
+  bool AddrIsBefore(uptr addr, uptr access_size, sptr *offset) const {
     (void)access_size;
     if (addr < Beg()) {
       *offset = Beg() - addr;
@@ -80,7 +80,7 @@ class AsanChunkView {
     }
     return false;
   }
-  bool AddrIsAtRight(uptr addr, uptr access_size, sptr *offset) const {
+  bool AddrIsAfter(uptr addr, uptr access_size, sptr *offset) const {
     if (addr + access_size > End()) {
       *offset = addr - End();
       return true;

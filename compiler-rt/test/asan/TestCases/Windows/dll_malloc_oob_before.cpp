@@ -9,13 +9,13 @@ int test_function() {
   buffer[-1] = 42;
 // CHECK: AddressSanitizer: heap-buffer-overflow on address [[ADDR:0x[0-9a-f]+]]
 // CHECK: WRITE of size 1 at [[ADDR]] thread T0
-// CHECK-NEXT: test_function {{.*}}dll_malloc_left_oob.cpp:[[@LINE-3]]
+// CHECK-NEXT: test_function {{.*}}dll_malloc_oob_before.cpp:[[@LINE-3]]
 // CHECK-NEXT: main {{.*}}dll_host.cpp
 //
 // CHECK: [[ADDR]] is located 1 bytes before 42-byte region
 // CHECK-LABEL: allocated by thread T0 here:
 // CHECK-NEXT:   malloc
-// CHECK-NEXT:   test_function {{.*}}dll_malloc_left_oob.cpp:[[@LINE-10]]
+// CHECK-NEXT:   test_function {{.*}}dll_malloc_oob_before.cpp:[[@LINE-10]]
 // CHECK-NEXT:   main {{.*}}dll_host.cpp
 // CHECK-LABEL: SUMMARY
   free(buffer);

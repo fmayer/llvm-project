@@ -37,12 +37,12 @@
 #include "sanitizer/asan_interface.h"
 
 void test_malloc_shadow(char *p, size_t sz, bool expect_redzones) {
-  // Last byte of the left redzone, if present.
+  // Last byte of the front redzone, if present.
   assert((char *)__asan_region_is_poisoned(p - 1, sz + 1) ==
          (expect_redzones ? p - 1 : nullptr));
   // The user memory.
   assert((char *)__asan_region_is_poisoned(p, sz) == nullptr);
-  // First byte of the right redzone, if present.
+  // First byte of the front redzone, if present.
   assert((char *)__asan_region_is_poisoned(p, sz + 1) ==
          (expect_redzones ? p + sz : nullptr));
 }

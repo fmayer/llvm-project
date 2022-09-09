@@ -26,8 +26,8 @@
 namespace {
 
 struct TestContext {
-  char *LeftRedzone;
-  char *RightRedzone;
+  char *FrontRedzone;
+  char *BackRedzone;
   std::jmp_buf JmpBuf;
 };
 
@@ -42,11 +42,11 @@ void __attribute__((noinline)) poisonStackAndJump(TestContext &c, Jump jump) {
   char Blob[100]; // This variable must not be optimized out, because we use it
                   // to create redzones.
 
-  c.LeftRedzone = Blob - 1;
-  c.RightRedzone = Blob + sizeof(Blob);
+  c.FrontRedzone = Blob - 1;
+  c.BackRedzone = Blob + sizeof(Blob);
 
-  assert(__asan_address_is_poisoned(c.LeftRedzone));
-  assert(__asan_address_is_poisoned(c.RightRedzone));
+  assert(__asan_address_is_poisoned(c.FrontRedzone));
+  assert(__asan_address_is_poisoned(c.BackRedzone));
 
   // Jump to avoid normal cleanup of redzone markers. Instead,
   // __asan_handle_no_return is called which unpoisons the stacks.
@@ -59,8 +59,9 @@ void testOnCurrentStack() {
   if (0 == setjmp(c.JmpBuf))
     poisonStackAndJump(c, [&] { longjmp(c.JmpBuf, 1); });
 
-  assert(0 == __asan_region_is_poisoned(c.LeftRedzone,
-                                        c.RightRedzone - c.LeftRedzone));
+  assert(0 ==
+         __asan_region_is_poisoned(c.FrontRedzone,
+                                   c.BackRedzone - c.FrontRedzone));
 }
 
 bool isOnSignalStack() {
@@ -114,13 +115,13 @@ void *threadFun(void *AltStack) {
 
   assert(!isOnSignalStack());
 
-  assert(0 == __asan_region_is_poisoned(
-                  defaultStack.LeftRedzone,
-                  defaultStack.RightRedzone - defaultStack.LeftRedzone));
+  assert(0 == __asan_region_is_poisoned(defaultStack.FrontRedzone,
+                                        defaultStack.BackRedzone -
+                                            defaultStack.FrontRedzone));
 
-  assert(0 == __asan_region_is_poisoned(
-                  signalStack.LeftRedzone,
-                  signalStack.RightRedzone - signalStack.LeftRedzone));
+  assert(0 == __asan_region_is_poisoned(signalStack.FrontRedzone,
+                                        signalStack.BackRedzone -
+                                            signalStack.FrontRedzone));
 
   return nullptr;
 }

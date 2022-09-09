@@ -68,18 +68,17 @@ static void AtomicContextLoad(const volatile atomic_uint64_t *atomic_context,
 }
 
 // The memory chunk allocated from the underlying allocator looks like this:
-// L L L L L L H H U U U U U U R R
-//   L -- left redzone words (0 or more bytes)
-//   H -- ChunkHeader (16 bytes), which is also a part of the left redzone.
+// F F F F F F H H U U U U U U B B
+//   F -- front redzone words (0 or more bytes)
+//   H -- ChunkHeader (16 bytes), which is also a part of the front redzone.
 //   U -- user memory.
-//   R -- right redzone (0 or more bytes)
+//   B -- back redzone (0 or more bytes)
 // ChunkBase consists of ChunkHeader and other bytes that overlap with user
 // memory.
 
-// If the left redzone is greater than the ChunkHeader size we store a magic
-// value in the first uptr word of the memory block and store the address of
-// ChunkBase in the next uptr.
-// M B L L L L L L L L L  H H U U U U U U
+// If the front redzone is greater than the ChunkHeader size we store a
+// magic value in the first uptr word of the memory block and store the address
+// of ChunkBase in the next uptr. M B F F F F F F F F F  H H U U U U U U
 //   |                    ^
 //   ---------------------|
 //   M -- magic value kAllocBegMagic
@@ -211,7 +210,7 @@ struct QuarantineCallback {
     }
 
     PoisonShadow(m->Beg(), RoundUpTo(m->UsedSize(), ASAN_SHADOW_GRANULARITY),
-                 kAsanHeapLeftRedzoneMagic);
+                 kAsanHeapFrontRedzoneMagic);
 
     // Statistics.
     AsanStats &thread_stats = GetCurrentThreadStats();
@@ -242,7 +241,7 @@ typedef Quarantine<QuarantineCallback, AsanChunk> AsanQuarantine;
 typedef AsanQuarantine::Cache QuarantineCache;
 
 void AsanMapUnmapCallback::OnMap(uptr p, uptr size) const {
-  PoisonShadow(p, size, kAsanHeapLeftRedzoneMagic);
+  PoisonShadow(p, size, kAsanHeapFrontRedzoneMagic);
   // Statistics.
   AsanStats &thread_stats = GetCurrentThreadStats();
   thread_stats.mmaps++;
@@ -355,18 +354,18 @@ struct Allocator {
       uptr chunk_end = chunk + allocated_size;
       if (chunk < beg && beg < end && end <= chunk_end) {
         // Looks like a valid AsanChunk in use, poison redzones only.
-        PoisonShadow(chunk, beg - chunk, kAsanHeapLeftRedzoneMagic);
+        PoisonShadow(chunk, beg - chunk, kAsanHeapFrontRedzoneMagic);
         uptr end_aligned_down = RoundDownTo(end, ASAN_SHADOW_GRANULARITY);
-        FastPoisonShadowPartialRightRedzone(
+        FastPoisonShadowPartialFrontRedzone(
             end_aligned_down, end - end_aligned_down,
-            chunk_end - end_aligned_down, kAsanHeapLeftRedzoneMagic);
+            chunk_end - end_aligned_down, kAsanHeapFrontRedzoneMagic);
         return;
       }
     }
 
     // This is either not an AsanChunk or freed or quarantined AsanChunk.
     // In either case, poison everything.
-    PoisonShadow(chunk, allocated_size, kAsanHeapLeftRedzoneMagic);
+    PoisonShadow(chunk, allocated_size, kAsanHeapFrontRedzoneMagic);
   }
 
   void ReInitialize(const AllocatorOptions &options) {
@@ -428,34 +427,35 @@ struct Allocator {
   }
 
   // We have an address between two chunks, and we want to report just one.
-  AsanChunk *ChooseChunk(uptr addr, AsanChunk *left_chunk,
-                         AsanChunk *right_chunk) {
-    if (!left_chunk)
-      return right_chunk;
-    if (!right_chunk)
-      return left_chunk;
+  AsanChunk *ChooseChunk(uptr addr, AsanChunk *chunk_before,
+                         AsanChunk *chunk_after) {
+    if (!chunk_before)
+      return chunk_after;
+    if (!chunk_after)
+      return chunk_before;
     // Prefer an allocated chunk over freed chunk and freed chunk
     // over available chunk.
-    u8 left_state = atomic_load(&left_chunk->chunk_state, memory_order_relaxed);
-    u8 right_state =
-        atomic_load(&right_chunk->chunk_state, memory_order_relaxed);
-    if (left_state != right_state) {
-      if (left_state == CHUNK_ALLOCATED)
-        return left_chunk;
-      if (right_state == CHUNK_ALLOCATED)
-        return right_chunk;
-      if (left_state == CHUNK_QUARANTINE)
-        return left_chunk;
-      if (right_state == CHUNK_QUARANTINE)
-        return right_chunk;
+    u8 state_before =
+        atomic_load(&chunk_before->chunk_state, memory_order_relaxed);
+    u8 state_after =
+        atomic_load(&chunk_after->chunk_state, memory_order_relaxed);
+    if (state_before != state_after) {
+      if (state_before == CHUNK_ALLOCATED)
+        return chunk_before;
+      if (state_after == CHUNK_ALLOCATED)
+        return chunk_after;
+      if (state_before == CHUNK_QUARANTINE)
+        return chunk_before;
+      if (state_after == CHUNK_QUARANTINE)
+        return chunk_after;
     }
     // Same chunk_state: choose based on offset.
     sptr l_offset = 0, r_offset = 0;
-    CHECK(AsanChunkView(left_chunk).AddrIsAtRight(addr, 1, &l_offset));
-    CHECK(AsanChunkView(right_chunk).AddrIsAtLeft(addr, 1, &r_offset));
+    CHECK(AsanChunkView(chunk_before).AddrIsAfter(addr, 1, &l_offset));
+    CHECK(AsanChunkView(chunk_after).AddrIsBefore(addr, 1, &r_offset));
     if (l_offset < r_offset)
-      return left_chunk;
-    return right_chunk;
+      return chunk_before;
+    return chunk_after;
   }
 
   bool UpdateAllocationStack(uptr addr, BufferedStackTrace *stack) {
@@ -503,7 +503,7 @@ struct Allocator {
     if (alignment > min_alignment)
       needed_size += alignment;
     // If we are allocating from the secondary allocator, there will be no
-    // automatic right redzone, so add the right redzone manually.
+    // automatic back redzone, so add the back redzone manually.
     if (!PrimaryAllocator::CanAllocate(needed_size, alignment))
       needed_size += rz_size;
     CHECK(IsAligned(needed_size, min_alignment));
@@ -542,7 +542,8 @@ struct Allocator {
       // time, for example, due to flags()->start_disabled.
       // Anyway, poison the block before using it for anything else.
       uptr allocated_size = allocator.GetActuallyAllocatedSize(allocated);
-      PoisonShadow((uptr)allocated, allocated_size, kAsanHeapLeftRedzoneMagic);
+      PoisonShadow((uptr)allocated, allocated_size,
+                   kAsanHeapFrontRedzoneMagic);
     }
 
     uptr alloc_beg = reinterpret_cast<uptr>(allocated);
@@ -801,17 +802,17 @@ struct Allocator {
   AsanChunkView FindHeapChunkByAddress(uptr addr) {
     AsanChunk *m1 = GetAsanChunkByAddr(addr);
     sptr offset = 0;
-    if (!m1 || AsanChunkView(m1).AddrIsAtLeft(addr, 1, &offset)) {
-      // The address is in the chunk's left redzone, so maybe it is actually
-      // a right buffer overflow from the other chunk before.
-      // Search a bit before to see if there is another chunk.
+    if (!m1 || AsanChunkView(m1).AddrIsBefore(addr, 1, &offset)) {
+      // The address is in the chunk's front redzone, so maybe it is
+      // actually a buffer overflow from another chunk before. Search a bit
+      // before to see if there is another chunk.
       AsanChunk *m2 = nullptr;
       for (uptr l = 1; l < GetPageSizeCached(); l++) {
         m2 = GetAsanChunkByAddr(addr - l);
         if (m2 == m1) continue;  // Still the same chunk.
         break;
       }
-      if (m2 && AsanChunkView(m2).AddrIsAtRight(addr, 1, &offset))
+      if (m2 && AsanChunkView(m2).AddrIsAfter(addr, 1, &offset))
         m1 = ChooseChunk(addr, m2, m1);
     }
     return AsanChunkView(m1);

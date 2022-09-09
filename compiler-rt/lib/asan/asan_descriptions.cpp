@@ -104,10 +104,10 @@ static void GetAccessToHeapChunkInformation(ChunkAccess *descr,
                                             AsanChunkView chunk, uptr addr,
                                             uptr access_size) {
   descr->bad_addr = addr;
-  if (chunk.AddrIsAtLeft(addr, access_size, &descr->offset)) {
-    descr->access_type = kAccessTypeLeft;
-  } else if (chunk.AddrIsAtRight(addr, access_size, &descr->offset)) {
-    descr->access_type = kAccessTypeRight;
+  if (chunk.AddrIsBefore(addr, access_size, &descr->offset)) {
+    descr->access_type = kAccessTypeBefore;
+  } else if (chunk.AddrIsAfter(addr, access_size, &descr->offset)) {
+    descr->access_type = kAccessTypeAfter;
     if (descr->offset < 0) {
       descr->bad_addr -= descr->offset;
       descr->offset = 0;
@@ -128,11 +128,11 @@ static void PrintHeapChunkAccess(uptr addr, const ChunkAccess &descr) {
   InternalScopedString str;
   str.append("%s", d.Location());
   switch (descr.access_type) {
-    case kAccessTypeLeft:
+    case kAccessTypeBefore:
       str.append("%p is located %zd bytes before",
                  (void *)descr.bad_addr, descr.offset);
       break;
-    case kAccessTypeRight:
+    case kAccessTypeAfter:
       str.append("%p is located %zd bytes after",
                  (void *)descr.bad_addr, descr.offset);
       break;

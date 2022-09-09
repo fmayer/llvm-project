@@ -20,9 +20,9 @@ class AllocaInst;
 
 // These magic constants should be the same as in
 // in asan_internal.h from ASan runtime in compiler-rt.
-static const int kAsanStackLeftRedzoneMagic = 0xf1;
+static const int kAsanStackFrontRedzoneMagic = 0xf1;
 static const int kAsanStackMidRedzoneMagic = 0xf2;
-static const int kAsanStackRightRedzoneMagic = 0xf3;
+static const int kAsanStackBackRedzoneMagic = 0xf3;
 static const int kAsanStackUseAfterReturnMagic = 0xf5;
 static const int kAsanStackUseAfterScopeMagic = 0xf8;
 

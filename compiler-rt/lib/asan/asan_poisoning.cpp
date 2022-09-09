@@ -42,14 +42,12 @@ void PoisonShadow(uptr addr, uptr size, u8 value) {
   FastPoisonShadow(addr, size, value);
 }
 
-void PoisonShadowPartialRightRedzone(uptr addr,
-                                     uptr size,
-                                     uptr redzone_size,
-                                     u8 value) {
+void PoisonShadowPartialBackRedzone(uptr addr, uptr size,
+                                          uptr redzone_size, u8 value) {
   if (!CanPoisonMemory()) return;
   CHECK(AddrIsAlignedByGranularity(addr));
   CHECK(AddrIsInMem(addr));
-  FastPoisonShadowPartialRightRedzone(addr, size, redzone_size, value);
+  FastPoisonShadowPartialFrontRedzone(addr, size, redzone_size, value);
 }
 
 struct ShadowSegmentEndpoint {
@@ -96,10 +94,10 @@ using namespace __asan;
 // mapping invariant is preserved (see detailed mapping description here:
 // https://github.com/google/sanitizers/wiki/AddressSanitizerAlgorithm).
 //
-// * if user asks to poison region [left, right), the program poisons
-// at least [left, AlignDown(right)).
-// * if user asks to unpoison region [left, right), the program unpoisons
-// at most [AlignDown(left), right).
+// * if user asks to poison region [low, high), the program poisons
+// at least [low, AlignDown(high)).
+// * if user asks to unpoison region [low, high), the program unpoisons
+// at most [AlignDown(low), high).
 void __asan_poison_memory_region(void const volatile *addr, uptr size) {
   if (!flags()->allow_user_poisoning || size == 0) return;
   uptr beg_addr = (uptr)addr;
@@ -284,7 +282,7 @@ uptr __asan_load_cxx_array_cookie(uptr *p) {
 }
 
 // This is a simplified version of __asan_(un)poison_memory_region, which
-// assumes that left border of region to be poisoned is properly aligned.
+// assumes that low border of region to be poisoned is properly aligned.
 static void PoisonAlignedStackMemory(uptr addr, uptr size, bool do_poison) {
   if (size == 0) return;
   uptr aligned_size = size & ~(ASAN_SHADOW_GRANULARITY - 1);

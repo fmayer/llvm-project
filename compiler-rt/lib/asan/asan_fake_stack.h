@@ -140,7 +140,7 @@ class FakeStack {
     return ((uptr)1) << (class_id + kMinStackFrameSizeLog);
   }
 
-  // The fake frame is guaranteed to have a right redzone.
+  // The fake frame is guaranteed to have a back redzone.
   // We use the last word of that redzone to store the address of the flag
   // that corresponds to the current frame to make faster deallocation.
   static u8 **SavedFlagPtr(uptr x, uptr class_id) {

@@ -118,7 +118,7 @@ GetShadowBytes(const SmallVectorImpl<ASanStackVariableDescription> &Vars,
   SmallVector<uint8_t, 64> SB;
   SB.clear();
   const uint64_t Granularity = Layout.Granularity;
-  SB.resize(Vars[0].Offset / Granularity, kAsanStackLeftRedzoneMagic);
+  SB.resize(Vars[0].Offset / Granularity, kAsanStackFrontRedzoneMagic);
   for (const auto &Var : Vars) {
     SB.resize(Var.Offset / Granularity, kAsanStackMidRedzoneMagic);
 
@@ -126,7 +126,7 @@ GetShadowBytes(const SmallVectorImpl<ASanStackVariableDescription> &Vars,
     if (Var.Size % Granularity)
       SB.push_back(Var.Size % Granularity);
   }
-  SB.resize(Layout.FrameSize / Granularity, kAsanStackRightRedzoneMagic);
+  SB.resize(Layout.FrameSize / Granularity, kAsanStackBackRedzoneMagic);
   return SB;
 }
 

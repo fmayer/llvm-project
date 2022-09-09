@@ -37,7 +37,7 @@
 #define kLowShadowEnd MEM_TO_SHADOW(kLowMemEnd)
 
 // But of course there is the huge hole between the high shadow memory,
-// which is in the low part, and the beginning of the high part.
+// whichs in the low part, and the beginning of the high part.
 
 #define kHighMemBeg (-(1ULL << (VMA_BITS - 1)))
 

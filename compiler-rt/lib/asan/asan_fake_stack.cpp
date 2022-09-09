@@ -289,15 +289,16 @@ void *__asan_addr_is_in_fake_stack(void *fake_stack, void *addr, void **beg,
 
 SANITIZER_INTERFACE_ATTRIBUTE
 void __asan_alloca_poison(uptr addr, uptr size) {
-  uptr LeftRedzoneAddr = addr - kAllocaRedzoneSize;
+  uptr FrontRedzoneAddr = addr - kAllocaRedzoneSize;
   uptr PartialRzAddr = addr + size;
   uptr RightRzAddr = (PartialRzAddr + kAllocaRedzoneMask) & ~kAllocaRedzoneMask;
   uptr PartialRzAligned = PartialRzAddr & ~(ASAN_SHADOW_GRANULARITY - 1);
-  FastPoisonShadow(LeftRedzoneAddr, kAllocaRedzoneSize, kAsanAllocaLeftMagic);
-  FastPoisonShadowPartialRightRedzone(
+  FastPoisonShadow(FrontRedzoneAddr, kAllocaRedzoneSize,
+                   kAsanAllocaFrontMagic);
+  FastPoisonShadowPartialFrontRedzone(
       PartialRzAligned, PartialRzAddr % ASAN_SHADOW_GRANULARITY,
-      RightRzAddr - PartialRzAligned, kAsanAllocaRightMagic);
-  FastPoisonShadow(RightRzAddr, kAllocaRedzoneSize, kAsanAllocaRightMagic);
+      RightRzAddr - PartialRzAligned, kAsanAllocaBackMagic);
+  FastPoisonShadow(RightRzAddr, kAllocaRedzoneSize, kAsanAllocaBackMagic);
 }
 
 SANITIZER_INTERFACE_ATTRIBUTE

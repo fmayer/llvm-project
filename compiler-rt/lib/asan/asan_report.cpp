@@ -377,37 +377,37 @@ static bool IsInvalidPointerPair(uptr a1, uptr a2) {
   // 256B in shadow memory can be iterated quite fast
   static const uptr kMaxOffset = 2048;
 
-  uptr left = a1 < a2 ? a1 : a2;
-  uptr right = a1 < a2 ? a2 : a1;
-  uptr offset = right - left;
+  uptr low = a1 < a2 ? a1 : a2;
+  uptr high = a1 < a2 ? a2 : a1;
+  uptr offset = high - low;
   if (offset <= kMaxOffset)
-    return __asan_region_is_poisoned(left, offset);
+    return __asan_region_is_poisoned(low, offset);
 
   AsanThread *t = GetCurrentThread();
 
   // check whether left is a stack memory pointer
-  if (uptr shadow_offset1 = t->GetStackVariableShadowStart(left)) {
-    uptr shadow_offset2 = t->GetStackVariableShadowStart(right);
+  if (uptr shadow_offset1 = t->GetStackVariableShadowStart(low)) {
+    uptr shadow_offset2 = t->GetStackVariableShadowStart(high);
     return shadow_offset2 == 0 || shadow_offset1 != shadow_offset2;
   }
 
   // check whether left is a heap memory address
   HeapAddressDescription hdesc1, hdesc2;
-  if (GetHeapAddressInformation(left, 0, &hdesc1) &&
+  if (GetHeapAddressInformation(low, 0, &hdesc1) &&
       hdesc1.chunk_access.access_type == kAccessTypeInside)
-    return !GetHeapAddressInformation(right, 0, &hdesc2) ||
+    return !GetHeapAddressInformation(high, 0, &hdesc2) ||
         hdesc2.chunk_access.access_type != kAccessTypeInside ||
         hdesc1.chunk_access.chunk_begin != hdesc2.chunk_access.chunk_begin;
 
   // check whether left is an address of a global variable
   GlobalAddressDescription gdesc1, gdesc2;
-  if (GetGlobalAddressInformation(left, 0, &gdesc1))
-    return !GetGlobalAddressInformation(right - 1, 0, &gdesc2) ||
+  if (GetGlobalAddressInformation(low, 0, &gdesc1))
+    return !GetGlobalAddressInformation(high - 1, 0, &gdesc2) ||
         !gdesc1.PointsInsideTheSameVariable(gdesc2);
 
-  if (t->GetStackVariableShadowStart(right) ||
-      GetHeapAddressInformation(right, 0, &hdesc2) ||
-      GetGlobalAddressInformation(right - 1, 0, &gdesc2))
+  if (t->GetStackVariableShadowStart(high) ||
+      GetHeapAddressInformation(high, 0, &hdesc2) ||
+      GetGlobalAddressInformation(high - 1, 0, &gdesc2))
     return true;
 
   // At this point we know nothing about both a1 and a2 addresses.
