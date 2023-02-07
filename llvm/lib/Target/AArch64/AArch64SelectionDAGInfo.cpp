@@ -120,7 +120,7 @@ static const int kSetTagLoopThreshold = 176;
 
 static SDValue EmitUnrolledSetTag(SelectionDAG &DAG, const SDLoc &dl,
                                   SDValue Chain, SDValue Ptr, uint64_t ObjSize,
-                                  const MachineMemOperand *BaseMemOperand,
+                                  MachinePointerInfo DstPtrInfo,
                                   bool ZeroData) {
   MachineFunction &MF = DAG.getMachineFunction();
   unsigned ObjSizeScaled = ObjSize / 16;
@@ -140,6 +140,9 @@ static SDValue EmitUnrolledSetTag(SelectionDAG &DAG, const SDLoc &dl,
   SmallVector<SDValue, 8> OutChains;
   unsigned OffsetScaled = 0;
   while (OffsetScaled < ObjSizeScaled) {
+    MachineMemOperand *BaseMemOperand = MF.getMachineMemOperand(
+        DstPtrInfo.getWithOffset(OffsetScaled * 16),
+        MachineMemOperand::MOStore, ObjSize, Align(16));
     if (ObjSizeScaled - OffsetScaled >= 2) {
       SDValue AddrNode =
           DAG.getMemBasePlusOffset(Ptr, TypeSize::Fixed(OffsetScaled * 16), dl);
@@ -177,15 +180,15 @@ SDValue AArch64SelectionDAGInfo::EmitTargetCodeForSetTag(
   assert(ObjSize % 16 == 0);
 
   MachineFunction &MF = DAG.getMachineFunction();
-  MachineMemOperand *BaseMemOperand = MF.getMachineMemOperand(
-      DstPtrInfo, MachineMemOperand::MOStore, ObjSize, Align(16));
 
   bool UseSetTagRangeLoop =
       kSetTagLoopThreshold >= 0 && (int)ObjSize >= kSetTagLoopThreshold;
   if (!UseSetTagRangeLoop)
-    return EmitUnrolledSetTag(DAG, dl, Chain, Addr, ObjSize, BaseMemOperand,
+    return EmitUnrolledSetTag(DAG, dl, Chain, Addr, ObjSize, DstPtrInfo,
                               ZeroData);
-
+  MachineMemOperand *BaseMemOperand = MF.getMachineMemOperand(
+      DstPtrInfo,
+      MachineMemOperand::MOStore, ObjSize, Align(16));
   const EVT ResTys[] = {MVT::i64, MVT::i64, MVT::Other};
 
   unsigned Opcode;
