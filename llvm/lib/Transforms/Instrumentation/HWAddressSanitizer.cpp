@@ -19,6 +19,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/PostDominators.h"
+#include "llvm/Analysis/ProfileSummaryInfo.h"
 #include "llvm/Analysis/StackSafetyAnalysis.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/BinaryFormat/Dwarf.h"
@@ -42,6 +43,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/PassManager.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
@@ -134,6 +136,11 @@ static cl::opt<bool>
     ClUseAfterScope("hwasan-use-after-scope",
                     cl::desc("detect use after scope within function"),
                     cl::Hidden, cl::init(true));
+
+static cl::opt<bool>
+    ClInlineHotBlocks("hwasan-inline-hot-blocks",
+                      cl::desc("inline tag checks for hot blocks"), cl::Hidden,
+                      cl::init(true));
 
 static cl::opt<bool> ClGenerateTagsWithCalls(
     "hwasan-generate-tags-with-calls",
@@ -275,7 +282,7 @@ public:
 
   void setSSI(const StackSafetyGlobalInfo *S) { SSI = S; }
 
-  void sanitizeFunction(Function &F, FunctionAnalysisManager &FAM);
+  void sanitizeFunction(Function &F, ModuleAnalysisManager &FAM);
   void initializeModule();
   void createHwasanCtorComdat();
 
@@ -298,7 +305,7 @@ public:
                                  Instruction *InsertBefore);
   bool ignoreMemIntrinsic(MemIntrinsic *MI);
   void instrumentMemIntrinsic(MemIntrinsic *MI);
-  bool instrumentMemAccess(InterestingMemoryOperand &O);
+  bool instrumentMemAccess(InterestingMemoryOperand &O, bool IsHotBlock);
   bool ignoreAccess(Instruction *Inst, Value *Ptr);
   void getInterestingMemoryOperands(
       Instruction *I, SmallVectorImpl<InterestingMemoryOperand> &Interesting);
@@ -414,9 +421,8 @@ PreservedAnalyses HWAddressSanitizerPass::run(Module &M,
     SSI = &MAM.getResult<StackSafetyGlobalAnalysis>(M);
 
   HWAddressSanitizer HWASan(M, Options.CompileKernel, Options.Recover, SSI);
-  auto &FAM = MAM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
   for (Function &F : M)
-    HWASan.sanitizeFunction(F, FAM);
+    HWASan.sanitizeFunction(F, MAM);
 
   PreservedAnalyses PA = PreservedAnalyses::none();
   // GlobalsAA is considered stateless and does not get invalidated unless
@@ -977,7 +983,8 @@ void HWAddressSanitizer::instrumentMemIntrinsic(MemIntrinsic *MI) {
   MI->eraseFromParent();
 }
 
-bool HWAddressSanitizer::instrumentMemAccess(InterestingMemoryOperand &O) {
+bool HWAddressSanitizer::instrumentMemAccess(InterestingMemoryOperand &O,
+                                             bool ForceInline) {
   Value *Addr = O.getPtr();
 
   LLVM_DEBUG(dbgs() << "Instrumenting: " << O.getInsn() << "\n");
@@ -991,13 +998,13 @@ bool HWAddressSanitizer::instrumentMemAccess(InterestingMemoryOperand &O) {
       (!O.Alignment || *O.Alignment >= Mapping.getObjectAlignment() ||
        *O.Alignment >= O.TypeStoreSize / 8)) {
     size_t AccessSizeIndex = TypeSizeToSizeIndex(O.TypeStoreSize);
-    if (InstrumentWithCalls) {
+    if (InstrumentWithCalls && !ForceInline) {
       SmallVector<Value *, 2> Args{IRB.CreatePointerCast(Addr, IntptrTy)};
       if (UseMatchAllCallback)
         Args.emplace_back(ConstantInt::get(Int8Ty, *MatchAllTag));
       IRB.CreateCall(HwasanMemoryAccessCallback[O.IsWrite][AccessSizeIndex],
                      Args);
-    } else if (OutlinedChecks) {
+    } else if (OutlinedChecks && !ForceInline) {
       instrumentMemAccessOutline(Addr, O.IsWrite, AccessSizeIndex, O.getInsn());
     } else {
       instrumentMemAccessInline(Addr, O.IsWrite, AccessSizeIndex, O.getInsn());
@@ -1426,7 +1433,8 @@ bool HWAddressSanitizer::instrumentStack(memtag::StackInfo &SInfo,
 }
 
 void HWAddressSanitizer::sanitizeFunction(Function &F,
-                                          FunctionAnalysisManager &FAM) {
+                                          ModuleAnalysisManager &MAM) {
+  auto &FAM = MAM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
   if (&F == HwasanCtorFunction)
     return;
 
@@ -1482,6 +1490,10 @@ void HWAddressSanitizer::sanitizeFunction(Function &F,
                    Mapping.WithFrameRecord &&
                    !SInfo.AllocasToInstrument.empty());
 
+  ProfileSummaryInfo *PSI =
+      ClInlineHotBlocks ? &MAM.getResult<ProfileSummaryAnalysis>(M) : nullptr;
+  BlockFrequencyInfo *BFI =
+      ClInlineHotBlocks ? &FAM.getResult<BlockFrequencyAnalysis>(F) : nullptr;
   if (!SInfo.AllocasToInstrument.empty()) {
     const DominatorTree &DT = FAM.getResult<DominatorTreeAnalysis>(F);
     const PostDominatorTree &PDT = FAM.getResult<PostDominatorTreeAnalysis>(F);
@@ -1504,8 +1516,11 @@ void HWAddressSanitizer::sanitizeFunction(Function &F,
     }
   }
 
-  for (auto &Operand : OperandsToInstrument)
-    instrumentMemAccess(Operand);
+  for (auto &Operand : OperandsToInstrument) {
+    bool IsHotBlock = ClInlineHotBlocks &&
+                      PSI->isHotBlock(Operand.getInsn()->getParent(), BFI);
+    instrumentMemAccess(Operand, IsHotBlock);
+  }
 
   if (ClInstrumentMemIntrinsics && !IntrinToInstrument.empty()) {
     for (auto *Inst : IntrinToInstrument)
