@@ -1492,8 +1492,13 @@ private:
   void mapAndInitializeRingBuffer() {
     if (getFlags()->allocation_ring_buffer_size < 1)
       return;
-    u32 AllocationRingBufferSize =
-        static_cast<u32>(getFlags()->allocation_ring_buffer_size);
+    // 3 GB ought to be enough for everyone.
+    constexpr int kMaxAllocationRingBufferSize = 100000000;
+    static_assert(kMaxAllocationRingBufferSize < UINT32_MAX);
+    static_assert(kMaxAllocationRingBufferSize > 0);
+    u32 AllocationRingBufferSize = static_cast<u32>(
+        getFlags()->allocation_ring_buffer_size < kMaxAllocationRingBufferSize ?
+        getFlags()->allocation_ring_buffer_size : kMaxAllocationRingBufferSize);
     MemMapT MemMap;
     MemMap.map(
         /*Addr=*/0U,
