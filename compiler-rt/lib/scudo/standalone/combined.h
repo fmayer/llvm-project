@@ -816,7 +816,7 @@ public:
       const bool PrimaryResult = Primary.setOption(O, Value);
       const bool SecondaryResult = Secondary.setOption(O, Value);
       const bool RegistryResult = TSDRegistry.setOption(O, Value);
-      return PrimaryResult && SecondaryResult && RegistryResult;
+      return PrimaryResult || SecondaryResult || RegistryResult;
     }
     return false;
   }
