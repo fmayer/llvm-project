@@ -172,7 +172,7 @@ public:
         static_cast<uptr>(getFlags()->quarantine_size_kb << 10),
         static_cast<uptr>(getFlags()->thread_local_quarantine_size_kb << 10));
 
-    mapAndInitializeRingBuffer();
+    mapAndInitializeRingBuffer(getFlags()->allocation_ring_buffer_size);
   }
 
   // Initialize the embedded GWP-ASan instance. Requires the main allocator to
@@ -808,6 +808,10 @@ public:
         Primary.Options.set(OptionBit::UseOddEvenTags);
       else if (Value == M_MEMTAG_TUNING_UAF)
         Primary.Options.clear(OptionBit::UseOddEvenTags);
+      return true;
+    } else if (O == Option::AllocationRingBufferSize) {
+      unmapRingBuffer();
+      mapAndInitializeRingBuffer(Value);
       return true;
     } else {
       // We leave it to the various sub-components to decide whether or not they
@@ -1489,16 +1493,16 @@ private:
         &RawRingBuffer[sizeof(AllocationRingBuffer)])[N];
   }
 
-  void mapAndInitializeRingBuffer() {
-    if (getFlags()->allocation_ring_buffer_size < 1)
+  void mapAndInitializeRingBuffer(int Size) {
+    if (Size < 1)
       return;
     // 3 GB ought to be enough for everyone.
     constexpr int kMaxAllocationRingBufferSize = 100000000;
     static_assert(kMaxAllocationRingBufferSize < UINT32_MAX);
     static_assert(kMaxAllocationRingBufferSize > 0);
     u32 AllocationRingBufferSize = static_cast<u32>(
-        getFlags()->allocation_ring_buffer_size < kMaxAllocationRingBufferSize ?
-        getFlags()->allocation_ring_buffer_size : kMaxAllocationRingBufferSize);
+        Size < kMaxAllocationRingBufferSize ?
+        Size : kMaxAllocationRingBufferSize);
     MemMapT MemMap;
     MemMap.map(
         /*Addr=*/0U,

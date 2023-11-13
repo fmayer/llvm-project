@@ -6,6 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common.h"
+#include "scudo/interface.h"
 #ifndef SCUDO_PREFIX
 #error "Define SCUDO_PREFIX prior to including this file!"
 #endif
@@ -253,6 +255,9 @@ INTERFACE WEAK int SCUDO_PREFIX(mallopt)(int param, int value) {
       break;
     case M_TSDS_COUNT_MAX:
       option = scudo::Option::MaxTSDsCount;
+      break;
+    case M_ALLOCATION_RING_BUFFER_SIZE:
+      option = scudo::Option::AllocationRingBufferSize;
       break;
     default:
       return 0;

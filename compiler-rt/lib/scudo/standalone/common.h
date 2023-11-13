@@ -194,6 +194,7 @@ enum class Option : u8 {
   MaxCacheEntriesCount, // Maximum number of blocks that can be cached.
   MaxCacheEntrySize,    // Maximum size of a block that can be cached.
   MaxTSDsCount,         // Number of usable TSDs for the shared registry.
+  AllocationRingBufferSize,
 };
 
 enum class ReleaseToOS : u8 {

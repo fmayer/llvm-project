@@ -164,6 +164,10 @@ size_t __scudo_get_ring_buffer_size(void);
 #define M_LOG_STATS -205
 #endif
 
+#ifndef M_ALLOCATION_RING_BUFFER_SIZE
+#define M_ALLOCATION_RING_BUFFER_SIZE -206
+#endif
+
 } // extern "C"
 
 #endif // SCUDO_INTERFACE_H_
