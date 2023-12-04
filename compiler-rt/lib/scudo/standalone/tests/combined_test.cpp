@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "memtag.h"
+#include "scudo/interface.h"
 #include "tests/scudo_unit_test.h"
 
 #include "allocator_config.h"
@@ -869,6 +870,38 @@ SCUDO_TYPED_TEST(ScudoCombinedTest, RingBufferAddress) {
   auto *Addr = Allocator->getRingBufferAddress();
   EXPECT_NE(Addr, nullptr);
   EXPECT_EQ(Addr, Allocator->getRingBufferAddress());
+}
+
+SCUDO_TYPED_TEST(ScudoCombinedTest, GetErrorInfo) {
+  struct FakeMteInterface {
+    static inline scudo::uptr archMemoryTagGranuleSize() { return 16; }
+
+    static inline scudo::uptr untagPointer(scudo::uptr Ptr) {
+      return Ptr & ((1ULL << 56) - 1); 
+    }
+
+    static inline uint8_t extractTag(scudo::uptr Ptr) {  return (Ptr >> 56) & 0xf; }
+  };
+  auto *Allocator = this->Allocator.get();
+  Allocator->setTrackAllocationStacks(true);
+  scudo_error_info error_info = {};
+  void *P = Allocator->allocate(16, Origin);
+  Allocator->deallocate(P, Origin);
+  std::string StackDepot(Allocator->getStackDepotAddress(),
+                         sizeof(scudo::StackDepot));
+  std::string RegionInfo(Allocator->getRegionInfoArrayAddress(),
+                         Allocator->getRegionInfoArraySize());
+  std::string RingBuffer(Allocator->getRingBufferAddress(),
+                         Allocator->getRingBufferSize());
+  // std::string Memory = "\x00\x00\x00\x00";
+  std::string Memory(static_cast<char*>(P) - scudo::Chunk::getHeaderSize(), scudo::Chunk::getHeaderSize() + 32);
+  std::string MemoryTags('\1', scudo::Chunk::getHeaderSize() + 16);
+
+  Allocator->template getErrorInfoImpl<FakeMteInterface>(
+      &error_info, reinterpret_cast<uintptr_t>(P) | (1 << 56), StackDepot.c_str(),
+      RegionInfo.c_str(), RingBuffer.c_str(), Memory.c_str(),
+      MemoryTags.c_str(), reinterpret_cast<uintptr_t>(P) - scudo::Chunk::getHeaderSize(), Memory.size());
+  EXPECT_EQ(error_info.reports[0].error_type, BUFFER_OVERFLOW);
 }
 
 #if SCUDO_CAN_USE_PRIMARY64

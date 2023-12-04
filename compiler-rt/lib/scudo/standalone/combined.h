@@ -963,6 +963,20 @@ public:
       Trace[I] = static_cast<uintptr_t>((*Depot)[RingPos + I]);
   }
 
+  struct MteInterface {
+    static inline uptr archMemoryTagGranuleSize() {
+      return scudo::archMemoryTagGranuleSize();
+    }
+
+    static inline uptr untagPointer(uptr Ptr) {
+      return scudo::untagPointer(Ptr);
+    }
+
+    static inline uint8_t extractTag(uptr Ptr) {
+      return scudo::extractTag(Ptr);
+    }
+  };
+
   static void getErrorInfo(struct scudo_error_info *ErrorInfo,
                            uintptr_t FaultAddr, const char *DepotPtr,
                            const char *RegionInfoPtr, const char *RingBufferPtr,
@@ -972,16 +986,27 @@ public:
     if (!allocatorSupportsMemoryTagging<Config>() ||
         MemoryAddr + MemorySize < MemoryAddr)
       return;
+    getErrorInfoImpl<MteInterface>(ErrorInfo, FaultAddr, DepotPtr,
+                                   RegionInfoPtr, RingBufferPtr, Memory,
+                                   MemoryTags, MemoryAddr, MemorySize);
+  }
 
+  template <typename T>
+  static void getErrorInfoImpl(struct scudo_error_info *ErrorInfo,
+                               uintptr_t FaultAddr, const char *DepotPtr,
+                               const char *RegionInfoPtr,
+                               const char *RingBufferPtr, const char *Memory,
+                               const char *MemoryTags, uintptr_t MemoryAddr,
+                               size_t MemorySize) {
     auto *Depot = reinterpret_cast<const StackDepot *>(DepotPtr);
     size_t NextErrorReport = 0;
 
     // Check for OOB in the current block and the two surrounding blocks. Beyond
     // that, UAF is more likely.
-    if (extractTag(FaultAddr) != 0)
-      getInlineErrorInfo(ErrorInfo, NextErrorReport, FaultAddr, Depot,
-                         RegionInfoPtr, Memory, MemoryTags, MemoryAddr,
-                         MemorySize, 0, 2);
+    if (T::extractTag(FaultAddr) != 0)
+      getInlineErrorInfo<T>(ErrorInfo, NextErrorReport, FaultAddr, Depot,
+                            RegionInfoPtr, Memory, MemoryTags, MemoryAddr,
+                            MemorySize, 0, 2);
 
     // Check the ring buffer. For primary allocations this will only find UAF;
     // for secondary allocations we can find either UAF or OOB.
@@ -990,10 +1015,10 @@ public:
 
     // Check for OOB in the 28 blocks surrounding the 3 we checked earlier.
     // Beyond that we are likely to hit false positives.
-    if (extractTag(FaultAddr) != 0)
-      getInlineErrorInfo(ErrorInfo, NextErrorReport, FaultAddr, Depot,
-                         RegionInfoPtr, Memory, MemoryTags, MemoryAddr,
-                         MemorySize, 2, 16);
+    if (T::extractTag(FaultAddr) != 0)
+      getInlineErrorInfo<T>(ErrorInfo, NextErrorReport, FaultAddr, Depot,
+                            RegionInfoPtr, Memory, MemoryTags, MemoryAddr,
+                            MemorySize, 2, 16);
   }
 
 private:
@@ -1322,6 +1347,7 @@ private:
       sizeof(((scudo_error_info *)nullptr)->reports) /
       sizeof(((scudo_error_info *)nullptr)->reports[0]);
 
+  template <typename T>
   static void getInlineErrorInfo(struct scudo_error_info *ErrorInfo,
                                  size_t &NextErrorReport, uintptr_t FaultAddr,
                                  const StackDepot *Depot,
@@ -1329,18 +1355,18 @@ private:
                                  const char *MemoryTags, uintptr_t MemoryAddr,
                                  size_t MemorySize, size_t MinDistance,
                                  size_t MaxDistance) {
-    uptr UntaggedFaultAddr = untagPointer(FaultAddr);
-    u8 FaultAddrTag = extractTag(FaultAddr);
+    uptr UntaggedFaultAddr = T::untagPointer(FaultAddr);
+    u8 FaultAddrTag = T::extractTag(FaultAddr);
     BlockInfo Info =
         PrimaryT::findNearestBlock(RegionInfoPtr, UntaggedFaultAddr);
 
     auto GetGranule = [&](uptr Addr, const char **Data, uint8_t *Tag) -> bool {
-      if (Addr < MemoryAddr || Addr + archMemoryTagGranuleSize() < Addr ||
-          Addr + archMemoryTagGranuleSize() > MemoryAddr + MemorySize)
+      if (Addr < MemoryAddr || Addr + T::archMemoryTagGranuleSize() < Addr ||
+          Addr + T::archMemoryTagGranuleSize() > MemoryAddr + MemorySize)
         return false;
       *Data = &Memory[Addr - MemoryAddr];
       *Tag = static_cast<u8>(
-          MemoryTags[(Addr - MemoryAddr) / archMemoryTagGranuleSize()]);
+          MemoryTags[(Addr - MemoryAddr) / T::archMemoryTagGranuleSize()]);
       return true;
     };
 
