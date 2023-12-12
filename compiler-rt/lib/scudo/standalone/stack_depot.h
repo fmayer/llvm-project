@@ -66,6 +66,7 @@ class alignas(16) StackDepot {
   uptr RingSize = 0;
   uptr RingMask = 0;
   uptr TabMask = 0;
+  uptr StackDepotSize = 0;
   // This is immediately followed by RingSize atomic_u64 and
   // (TabMask + 1) atomic_u32.
 
@@ -89,12 +90,13 @@ class alignas(16) StackDepot {
   }
 
 public:
-  void init(uptr RingSz, uptr TabSz) {
+  void init(uptr RingSz, uptr TabSz, uptr DepotSz) {
     DCHECK(isPowerOfTwo(RingSz));
     DCHECK(isPowerOfTwo(TabSz));
     RingSize = RingSz;
     RingMask = RingSz - 1;
     TabMask = TabSz - 1;
+    StackDepotSize = DepotSz;
   }
 
   // Ensure that RingSize, RingMask and TabMask are set up in a way that
@@ -185,6 +187,8 @@ public:
   u64 at(const char *RawStackDepot, uptr RingPos) const {
     return atomic_load_relaxed(&Ring(RawStackDepot)[RingPos & RingMask]);
   }
+
+  uptr size() const { return StackDepotSize; }
 };
 
 } // namespace scudo

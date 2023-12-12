@@ -59,6 +59,11 @@ struct atomic_uptr {
   volatile Type ValDoNotUse;
 };
 
+struct atomic_charptr {
+  typedef char *Type;
+  volatile Type ValDoNotUse;
+};
+
 template <typename T>
 inline typename T::Type atomic_load(const volatile T *A, memory_order MO) {
   DCHECK(!(reinterpret_cast<uptr>(A) % sizeof(*A)));
