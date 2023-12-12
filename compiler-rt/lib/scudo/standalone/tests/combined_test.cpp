@@ -891,7 +891,7 @@ SCUDO_TYPED_TEST(ScudoCombinedTest, StackDepot) {
                                       1024 * sizeof(scudo::atomic_u64) +
                                       1024 * sizeof(scudo::atomic_u32)] = {};
   auto *Depot = reinterpret_cast<scudo::StackDepot *>(Buf);
-  Depot->init(1024, 1024);
+  Depot->init(1024, 1024, sizeof(Buf));
   ASSERT_TRUE(Depot->isValid(sizeof(Buf)));
   ASSERT_FALSE(Depot->isValid(sizeof(Buf) - 1));
   scudo::uptr Stack[] = {1, 2, 3};
