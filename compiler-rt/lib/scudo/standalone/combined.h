@@ -14,6 +14,7 @@
 #include "common.h"
 #include "flags.h"
 #include "flags_parser.h"
+#include "internal_defs.h"
 #include "local_cache.h"
 #include "mem_map.h"
 #include "memtag.h"
@@ -173,9 +174,10 @@ public:
     Quarantine.init(
         static_cast<uptr>(getFlags()->quarantine_size_kb << 10),
         static_cast<uptr>(getFlags()->thread_local_quarantine_size_kb << 10));
-
-    mapAndInitializeRingBuffer();
+    mapAndInitializeRingBuffer(getFlags()->allocation_ring_buffer_size);
   }
+
+  bool resizeRingBuffer(int Size) { return mapAndInitializeRingBuffer(Size); }
 
   // Initialize the embedded GWP-ASan instance. Requires the main allocator to
   // be functional, best called from PostInitCallback.
@@ -283,7 +285,7 @@ public:
     return reinterpret_cast<void *>(addHeaderTag(reinterpret_cast<uptr>(Ptr)));
   }
 
-  NOINLINE u32 collectStackTrace() {
+  NOINLINE u32 collectStackTrace(char *RawRingBuffer) {
 #ifdef HAVE_ANDROID_UNSAFE_FRAME_POINTER_CHASE
     // Discard collectStackTrace() frame and allocator function frame.
     constexpr uptr DiscardFrames = 2;
@@ -291,10 +293,12 @@ public:
     uptr Size =
         android_unsafe_frame_pointer_chase(Stack, MaxTraceSize + DiscardFrames);
     Size = Min<uptr>(Size, MaxTraceSize + DiscardFrames);
-    return reinterpret_cast<StackDepot *>(RawStackDepot)
-        ->insert(RawStackDepot, Stack + Min<uptr>(DiscardFrames, Size),
-                 Stack + Size);
+    auto *RB = reinterpret_cast<AllocationRingBuffer *>(RawRingBuffer);
+    auto *SD = RB->RawStackDepot;
+    return reinterpret_cast<StackDepot *>(SD)->insert(
+        SD, Stack + Min<uptr>(DiscardFrames, Size), Stack + Size);
 #else
+    (void)(RawRingBuffer);
     return 0;
 #endif
   }
@@ -897,10 +901,6 @@ public:
 
   void setTrackAllocationStacks(bool Track) {
     initThreadMaybe();
-    if (getFlags()->allocation_ring_buffer_size <= 0) {
-      DCHECK(!Primary.Options.load().get(OptionBit::TrackAllocationStacks));
-      return;
-    }
     if (Track)
       Primary.Options.set(OptionBit::TrackAllocationStacks);
     else
@@ -1272,7 +1272,7 @@ private:
     if (!UNLIKELY(Options.get(OptionBit::TrackAllocationStacks)) || !RB)
       return;
     auto *Ptr32 = reinterpret_cast<u32 *>(Ptr);
-    Ptr32[MemTagAllocationTraceIndex] = collectStackTrace();
+    Ptr32[MemTagAllocationTraceIndex] = collectStackTrace(RB);
     Ptr32[MemTagAllocationTidIndex] = getThreadID();
   }
 
@@ -1307,7 +1307,7 @@ private:
     if (!UNLIKELY(Options.get(OptionBit::TrackAllocationStacks)) || !RB)
       return;
 
-    u32 Trace = collectStackTrace();
+    u32 Trace = collectStackTrace(RB);
     u32 Tid = getThreadID();
 
     auto *Ptr32 = reinterpret_cast<u32 *>(Ptr);
@@ -1327,7 +1327,7 @@ private:
     u32 AllocationTrace = Ptr32[MemTagAllocationTraceIndex];
     u32 AllocationTid = Ptr32[MemTagAllocationTidIndex];
 
-    u32 DeallocationTrace = collectStackTrace();
+    u32 DeallocationTrace = collectStackTrace(RB);
     u32 DeallocationTid = getThreadID();
 
     storeRingBufferEntry(RB, addFixedTag(untagPointer(Ptr), PrevTag),
@@ -1518,23 +1518,26 @@ private:
         &RawRingBuffer[sizeof(AllocationRingBuffer)])[N];
   }
 
-  void mapAndInitializeRingBuffer() {
-    if (getFlags()->allocation_ring_buffer_size <= 0)
-      return;
-    u32 AllocationRingBufferSize =
-        static_cast<u32>(getFlags()->allocation_ring_buffer_size);
+  bool mapAndInitializeRingBuffer(int RingBufferSize) {
+    if (RingBufferSize < 0)
+      return false;
+    if (RingBufferSize == 0) {
+      swapOutRingBuffer(nullptr);
+      return true;
+    }
+    u32 AllocationRingBufferSize = static_cast<u32>(RingBufferSize);
     // We store alloc and free stacks for each entry.
     constexpr auto kStacksPerRingBufferEntry = 2;
     constexpr auto kMaxU32Pow2 = ~(UINT32_MAX >> 1);
     static_assert(isPowerOfTwo(kMaxU32Pow2));
     if (AllocationRingBufferSize > kMaxU32Pow2 / kStacksPerRingBufferEntry)
-      return;
+      return false;
     u32 TabSize = static_cast<u32>(roundUpPowerOfTwo(kStacksPerRingBufferEntry *
                                                      AllocationRingBufferSize));
     constexpr auto kFramesPerStack = 16;
     static_assert(isPowerOfTwo(kFramesPerStack));
     if (TabSize > UINT32_MAX / kFramesPerStack)
-      return;
+      return false;
     u32 RingSize = static_cast<u32>(TabSize * kFramesPerStack);
     DCHECK(isPowerOfTwo(RingSize));
     static_assert(sizeof(StackDepot) % alignof(atomic_u64) == 0);
@@ -1559,17 +1562,38 @@ private:
         roundUp(ringBufferSizeInBytes(AllocationRingBufferSize),
                 getPageSizeCached()),
         "scudo:ring_buffer");
+
     auto *RawRB = reinterpret_cast<char *>(MemMap.getBase());
     auto *RB = reinterpret_cast<AllocationRingBuffer *>(RawRB);
     RB->RawRingBufferMap = MemMap;
     RB->RingBufferElements = AllocationRingBufferSize;
     RB->RawStackDepot = SD;
     RB->RawStackDepotMap = DepotMap;
-    atomic_store(&RawRingBuffer, RawRB, memory_order_release);
+    swapOutRingBuffer(RawRB);
+    return true;
+
     static_assert(sizeof(AllocationRingBuffer) %
                           alignof(typename AllocationRingBuffer::Entry) ==
                       0,
                   "invalid alignment");
+  }
+
+  void swapOutRingBuffer(char *NewRB) {
+    auto *PrevRawRB =
+        atomic_exchange(&RawRingBuffer, NewRB, memory_order_release);
+    if (PrevRawRB) {
+      auto *RB = reinterpret_cast<AllocationRingBuffer *>(PrevRawRB);
+      auto RawStackDepotMap = RB->RawStackDepotMap;
+      if (RawStackDepotMap.isAllocated()) {
+        RawStackDepotMap.releaseAndZeroPagesToOS(
+            RawStackDepotMap.getBase(), RawStackDepotMap.getCapacity());
+      }
+      auto RawRingBufferMap = RB->RawRingBufferMap;
+      if (RawRingBufferMap.isAllocated()) {
+        RawRingBufferMap.releaseAndZeroPagesToOS(
+            RawRingBufferMap.getBase(), RawRingBufferMap.getCapacity());
+      }
+    }
   }
 
   void unmapRingBuffer() {
