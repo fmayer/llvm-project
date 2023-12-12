@@ -886,6 +886,31 @@ SCUDO_TYPED_TEST(ScudoCombinedTest, StackDepotAddress) {
   EXPECT_EQ(Addr, Allocator->getStackDepotAddress());
 }
 
+SCUDO_TYPED_TEST(ScudoCombinedTest, ResizeRingBuffer) {
+  auto *Allocator = this->Allocator.get();
+  auto Size = Allocator->getRingBufferSize();
+  auto DepotSize = Allocator->getStackDepotSize();
+  ASSERT_GT(Size, 0);
+  ASSERT_TRUE(Allocator->resizeRingBuffer(Size + 1024));
+  EXPECT_GT(Allocator->getRingBufferSize(), Size);
+  EXPECT_GT(Allocator->getStackDepotSize(), DepotSize);
+}
+
+SCUDO_TYPED_TEST(ScudoCombinedTest, ResizeRingBufferToZero) {
+  auto *Allocator = this->Allocator.get();
+  const char *PrevRB = Allocator->getRingBufferAddress();
+  auto PrevRBSize = Allocator->getRingBufferSize();
+  ASSERT_TRUE(Allocator->resizeRingBuffer(0));
+  EXPECT_EQ(Allocator->getRingBufferSize(), 0);
+  EXPECT_EQ(Allocator->getStackDepotAddress(), nullptr);
+  // Make sure the old buffer is still accessible without a segfault.
+  // We DONTNEED the buffer, so we free the underlying pages, but we keep the
+  // VMA around to prevent races.
+  ASSERT_NE(PrevRB, nullptr);
+  ASSERT_GT(PrevRBSize, 0);
+  const_cast<volatile const char *>(PrevRB)[PrevRBSize - 1];
+}
+
 SCUDO_TYPED_TEST(ScudoCombinedTest, StackDepot) {
   alignas(scudo::StackDepot) char Buf[sizeof(scudo::StackDepot) +
                                       1024 * sizeof(scudo::atomic_u64) +
