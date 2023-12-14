@@ -1528,7 +1528,7 @@ private:
       return;
     u32 TabSize = static_cast<u32>(roundUpPowerOfTwo(kStacksPerRingBufferEntry *
                                                      AllocationRingBufferSize));
-    constexpr auto kFramesPerStack = 8;
+    constexpr auto kFramesPerStack = 16;
     static_assert(isPowerOfTwo(kFramesPerStack));
     if (TabSize > UINT32_MAX / kFramesPerStack)
       return;
