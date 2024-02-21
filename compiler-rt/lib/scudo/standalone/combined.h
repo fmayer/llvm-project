@@ -174,7 +174,7 @@ public:
         static_cast<uptr>(getFlags()->quarantine_size_kb << 10),
         static_cast<uptr>(getFlags()->thread_local_quarantine_size_kb << 10));
 
-    mapAndInitializeRingBuffer();
+    mapAndInitializeRingBuffer(getFlags()->allocation_ring_buffer_size);
   }
 
   void enableRingBuffer() {
@@ -188,6 +188,8 @@ public:
     if (RB)
       RB->Depot->disable();
   }
+
+  bool resizeRingBuffer(int Size) { return mapAndInitializeRingBuffer(Size); }
 
   // Initialize the embedded GWP-ASan instance. Requires the main allocator to
   // be functional, best called from PostInitCallback.
@@ -1535,11 +1537,15 @@ private:
         RBEntryStart)[N];
   }
 
-  void mapAndInitializeRingBuffer() {
-    if (getFlags()->allocation_ring_buffer_size <= 0)
-      return;
-    u32 AllocationRingBufferSize =
-        static_cast<u32>(getFlags()->allocation_ring_buffer_size);
+  bool mapAndInitializeRingBuffer(int RingBufferSize) {
+    if (RingBufferSize < 0 ||
+        static_cast<unsigned int>(RingBufferSize) >= UINT32_MAX)
+      return false;
+    if (RingBufferSize == 0) {
+      swapOutRingBuffer(nullptr);
+      return true;
+    }
+    u32 AllocationRingBufferSize = static_cast<u32>(RingBufferSize);
 
     // We store alloc and free stacks for each entry.
     constexpr u32 kStacksPerRingBufferEntry = 2;
@@ -1564,11 +1570,11 @@ private:
                   UINTPTR_MAX);
 
     if (AllocationRingBufferSize > kMaxU32Pow2 / kStacksPerRingBufferEntry)
-      return;
+      return false;
     u32 TabSize = static_cast<u32>(roundUpPowerOfTwo(kStacksPerRingBufferEntry *
                                                      AllocationRingBufferSize));
     if (TabSize > UINT32_MAX / kFramesPerStack)
-      return;
+      return false;
     u32 RingSize = static_cast<u32>(TabSize * kFramesPerStack);
     DCHECK(isPowerOfTwo(RingSize));
 
@@ -1594,12 +1600,33 @@ private:
     RB->StackDepotSize = StackDepotSize;
     RB->RawStackDepotMap = DepotMap;
 
-    atomic_store(&RingBufferAddress, reinterpret_cast<uptr>(RB),
-                 memory_order_release);
+    swapOutRingBuffer(RB);
     static_assert(sizeof(AllocationRingBuffer) %
                           alignof(typename AllocationRingBuffer::Entry) ==
                       0,
                   "invalid alignment");
+    return true;
+  }
+
+  void swapOutRingBuffer(AllocationRingBuffer *NewRB) {
+    // To allow resizeRingBuffer to be called in a multi-threaded context by apps,
+    // we do not actually unmap, but only madvise(DONTNEED) the pages. That way,
+    // straggler threads will not crash.
+    AllocationRingBuffer *PrevRB = reinterpret_cast<AllocationRingBuffer *>(
+        atomic_exchange(&RingBufferAddress, reinterpret_cast<uptr>(NewRB),
+                        memory_order_acq_rel));
+    if (PrevRB) {
+      auto RawStackDepotMap = PrevRB->RawStackDepotMap;
+      if (RawStackDepotMap.isAllocated()) {
+        RawStackDepotMap.releaseAndZeroPagesToOS(
+            RawStackDepotMap.getBase(), RawStackDepotMap.getCapacity());
+      }
+      auto RawRingBufferMap = PrevRB->RawRingBufferMap;
+      if (RawRingBufferMap.isAllocated()) {
+        RawRingBufferMap.releaseAndZeroPagesToOS(
+            RawRingBufferMap.getBase(), RawRingBufferMap.getCapacity());
+      }
+    }
   }
 
   void unmapRingBuffer() {
