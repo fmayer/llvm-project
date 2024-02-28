@@ -1,4 +1,4 @@
-// RUN: %clang_hwasan -O0 %s -o %t && %run %t 2>&1 | FileCheck %s
+// RUN: %clang_hwasan -O0 %s -o %t && not %run %t 2>&1 | FileCheck %s
 
 // REQUIRES: pointer-tagging
 #include <assert.h>
@@ -15,6 +15,7 @@ __attribute__((noinline)) int f(void *caller_frame) {
 }
 
 int main() {
-  return f(__builtin_frame_address(0));
+  f(__builtin_frame_address(0));
+  abort();
   // CHECK: HWASan is ignoring requested __hwasan_handle_longjmp:
 }

@@ -37,6 +37,15 @@
 // ACHTUNG! No system header includes in this file.
 
 using namespace __sanitizer;
+extern "C" {
+// New API in Android 15 that allows to attach detail to crashes.
+typedef struct crash_detail_t crash_detail_t;
+crash_detail_t *android_crash_detail_register(const void *name,
+                                              size_t name_size,
+                                              const void *data,
+                                              size_t data_size)
+    __attribute__((weak));
+}
 
 namespace __hwasan {
 
@@ -693,6 +702,17 @@ void __hwasan_handle_longjmp(const void *sp_dst) {
         "stack top: %p; target %p; distance: %p (%zd)\n"
         "False positive error reports may follow\n",
         (void *)sp, (void *)dst, dst - sp, dst - sp);
+    if (android_crash_detail_register) {
+      static const char name[] =
+          "hwasan_handle_longjmp ignored. HWASan error might be false "
+          "positive";
+      static char value[64];
+      int size =
+          internal_snprintf(value, sizeof(value), "stack top: %p; target %p",
+                            (void *)sp, (void *)dst);
+      if (size > 0 && static_cast<unsigned int>(size) < sizeof(value))
+        android_crash_detail_register(name, sizeof(name) - 1, value, size);
+    }
     return;
   }
   TagMemory(sp, dst - sp, 0);
@@ -710,6 +730,17 @@ void __hwasan_handle_vfork(const void *sp_dst) {
         "stack top: %zx; current %zx; bottom: %zx \n"
         "False positive error reports may follow\n",
         top, sp, bottom);
+    if (android_crash_detail_register) {
+      constexpr const char name[] =
+          "hwasan_handle_vfork ignored. HWASan error might be false "
+          "positive.";
+      static char value[64];
+      int size = internal_snprintf(value, sizeof(value),
+                                   "stack top: %p; current: %p; bottom: %p",
+                                   (void *)top, (void *)sp, (void *)bottom);
+      if (size > 0 && static_cast<unsigned int>(size) < sizeof(value))
+        android_crash_detail_register(name, sizeof(name), value, size);
+    }
     return;
   }
   TagMemory(bottom, sp - bottom, 0);
