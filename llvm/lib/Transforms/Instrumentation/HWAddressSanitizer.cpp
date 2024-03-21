@@ -1556,6 +1556,18 @@ void HWAddressSanitizer::sanitizeFunction(Function &F,
 
   assert(!ShadowBase);
 
+  const DominatorTree &DT = FAM.getResult<DominatorTreeAnalysis>(F);
+  BasicBlock *PrologueBB = nullptr;
+  for (auto *X : IntrinToInstrument) {
+    if (PrologueBB == nullptr)
+      PrologueBB = X->getParent();
+    else
+      PrologueBB = DT.findNearestCommonDominator(PrologueBB, X->getParent());
+  }
+  for (auto &X : OperandsToInstrument) {
+    PrologueBB = DT.findNearestCommonDominator(PrologueBB, X.getInsn()->getParent());
+  }
+
   BasicBlock::iterator InsertPt = F.getEntryBlock().begin();
   IRBuilder<> EntryIRB(&F.getEntryBlock(), InsertPt);
   emitPrologue(EntryIRB,
@@ -1564,7 +1576,6 @@ void HWAddressSanitizer::sanitizeFunction(Function &F,
                    !SInfo.AllocasToInstrument.empty());
 
   if (!SInfo.AllocasToInstrument.empty()) {
-    const DominatorTree &DT = FAM.getResult<DominatorTreeAnalysis>(F);
     const PostDominatorTree &PDT = FAM.getResult<PostDominatorTreeAnalysis>(F);
     const LoopInfo &LI = FAM.getResult<LoopAnalysis>(F);
     Value *StackTag = getStackBaseTag(EntryIRB);

@@ -14,10 +14,12 @@
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Analysis/CFG.h"
+#include "llvm/Analysis/OptimizationRemarkEmitter.h"
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/Analysis/StackSafetyAnalysis.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/TargetParser/Triple.h"
@@ -281,6 +283,22 @@ Value *getAndroidSanitizerSlotPtr(IRBuilder<> &IRB) {
       Intrinsic::getDeclaration(M, Intrinsic::thread_pointer);
   return IRB.CreateConstGEP1_32(IRB.getInt8Ty(),
                                 IRB.CreateCall(ThreadPointerFunc), 0x30);
+}
+
+
+BasicBlock *findPrologueBB(const MapVector<AllocaInst *, memtag::AllocaInfo> &AllocasToInstrument, const DominatorTree *DT) {
+  // Try sinking IRG as deep as possible to avoid hurting shrink wrap.
+  BasicBlock *PrologueBB = nullptr;
+  for (auto &I : AllocasToInstrument) {
+    const memtag::AllocaInfo &Info = I.second;
+    AllocaInst *AI = Info.AI;
+    if (!PrologueBB) {
+      PrologueBB = AI->getParent();
+      continue;
+    }
+    PrologueBB = DT->findNearestCommonDominator(PrologueBB, AI->getParent());
+  }
+  return PrologueBB;
 }
 
 } // namespace memtag

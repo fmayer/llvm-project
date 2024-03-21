@@ -439,18 +439,7 @@ void AArch64StackTagging::untagAlloca(AllocaInst *AI, Instruction *InsertBefore,
 Instruction *AArch64StackTagging::insertBaseTaggedPointer(
     const MapVector<AllocaInst *, memtag::AllocaInfo> &AllocasToInstrument,
     const DominatorTree *DT) {
-  BasicBlock *PrologueBB = nullptr;
-  // Try sinking IRG as deep as possible to avoid hurting shrink wrap.
-  for (auto &I : AllocasToInstrument) {
-    const memtag::AllocaInfo &Info = I.second;
-    AllocaInst *AI = Info.AI;
-    if (!PrologueBB) {
-      PrologueBB = AI->getParent();
-      continue;
-    }
-    PrologueBB = DT->findNearestCommonDominator(PrologueBB, AI->getParent());
-  }
-  assert(PrologueBB);
+  BasicBlock *PrologueBB = memtag::findPrologueBB(AllocasToInstrument, DT);
 
   IRBuilder<> IRB(&PrologueBB->front());
   Function *IRG_SP =

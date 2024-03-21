@@ -17,6 +17,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/StackSafetyAnalysis.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Support/Alignment.h"
 
@@ -85,6 +86,7 @@ Value *readRegister(IRBuilder<> &IRB, StringRef Name);
 Value *getFP(IRBuilder<> &IRB);
 Value *getPC(const Triple &TargetTriple, IRBuilder<> &IRB);
 Value *getAndroidSanitizerSlotPtr(IRBuilder<> &IRB);
+BasicBlock *findPrologueBB(const MapVector<AllocaInst *, memtag::AllocaInfo> &AllocasToInstrument, const DominatorTree *DT);
 
 } // namespace memtag
 } // namespace llvm
