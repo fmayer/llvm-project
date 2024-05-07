@@ -1845,6 +1845,15 @@ def HWASAN_CHECK_MEMACCESS_SHORTGRANULES_FIXEDSHADOW : Pseudo<
   Sched<[]>;
 }
 
+let Uses = [ FP, X9 ], Defs = [ X10, X11, X12, X13, X14, X15, X16, X17, LR, NZCV ] in {
+def MTE_TAG_STACK : Pseudo<
+  (outs  GPR64x9:$taggedsp), (ins),
+  []>,
+  Sched<[]>;
+ }
+
+def : Pat<(int_aarch64_mte_tag_stack), (MTE_TAG_STACK)>;
+
 // The virtual cycle counter register is CNTVCT_EL0.
 def : Pat<(readcyclecounter), (MRS 0xdf02)>;
 

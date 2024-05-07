@@ -1504,6 +1504,15 @@ bool AArch64ExpandPseudo::expandMI(MachineBasicBlock &MBB,
      MI.eraseFromParent();
      return true;
    }
+   case AArch64::MTE_TAG_STACK: {
+     BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(AArch64::BL))
+         .addExternalSymbol("__mte_tag_stack")
+         .cloneMemRefs(MI)
+         .setMIFlags(MI.getFlags());
+
+     MI.eraseFromParent();
+     return true;
+   }
    case AArch64::STGloop_wback:
    case AArch64::STZGloop_wback:
      return expandSetTagLoop(MBB, MBBI, NextMBBI);

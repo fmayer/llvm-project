@@ -43,6 +43,7 @@
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicsAArch64.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/ValueHandle.h"
@@ -93,6 +94,8 @@ enum RecordStackHistoryMode {
   // Insert instructions into the prologue for storing into the stack ring
   // buffer directly.
   instr,
+
+  call,
 };
 
 static cl::opt<RecordStackHistoryMode> ClRecordStackHistory(
@@ -101,7 +104,9 @@ static cl::opt<RecordStackHistoryMode> ClRecordStackHistory(
              "ring buffer"),
     cl::values(clEnumVal(none, "Do not record stack ring history"),
                clEnumVal(instr, "Insert instructions into the prologue for "
-                                "storing into the stack ring buffer")),
+                                "storing into the stack ring buffer"),
+               clEnumVal(call, "Add a call into the runtime to generate "
+                               "the tag and store in the stack ring buffer.")),
     cl::Hidden, cl::init(none));
 
 static const Align kTagGranuleSize = Align(16);
@@ -330,9 +335,8 @@ public:
   Instruction *collectInitializers(Instruction *StartInst, Value *StartPtr,
                                    uint64_t Size, InitializerBuilder &IB);
 
-  Instruction *insertBaseTaggedPointer(
-      const Module &M,
-      const MapVector<AllocaInst *, memtag::AllocaInfo> &Allocas,
+  Value *insertBaseTaggedPointer(
+      Module &M, const MapVector<AllocaInst *, memtag::AllocaInfo> &Allocas,
       const DominatorTree *DT);
   bool runOnFunction(Function &F) override;
 
@@ -459,8 +463,8 @@ void AArch64StackTagging::untagAlloca(AllocaInst *AI, Instruction *InsertBefore,
                               ConstantInt::get(IRB.getInt64Ty(), Size)});
 }
 
-Instruction *AArch64StackTagging::insertBaseTaggedPointer(
-    const Module &M,
+Value *AArch64StackTagging::insertBaseTaggedPointer(
+    Module &M,
     const MapVector<AllocaInst *, memtag::AllocaInfo> &AllocasToInstrument,
     const DominatorTree *DT) {
   BasicBlock *PrologueBB = nullptr;
@@ -476,13 +480,21 @@ Instruction *AArch64StackTagging::insertBaseTaggedPointer(
   }
   assert(PrologueBB);
 
+  auto TargetTriple = Triple(M.getTargetTriple());
+
   IRBuilder<> IRB(&PrologueBB->front());
+  if (ClRecordStackHistory == call && TargetTriple.isAndroid() &&
+      TargetTriple.isAArch64() && !TargetTriple.isAndroidVersionLT(10000) &&
+      !AllocasToInstrument.empty()) {
+    auto *Fn = Intrinsic::getDeclaration(&M, Intrinsic::aarch64_mte_tag_stack);
+    return IRB.CreateCall(Fn);
+  }
+
   Function *IRG_SP =
       Intrinsic::getDeclaration(F->getParent(), Intrinsic::aarch64_irg_sp);
   Instruction *Base =
       IRB.CreateCall(IRG_SP, {Constant::getNullValue(IRB.getInt64Ty())});
   Base->setName("basetag");
-  auto TargetTriple = Triple(M.getTargetTriple());
   // This is not a stable ABI for now, so only allow in dev builds with API
   // level 10000.
   if (ClRecordStackHistory == instr && TargetTriple.isAndroid() &&
@@ -570,7 +582,7 @@ bool AArch64StackTagging::runOnFunction(Function &Fn) {
   SetTagFunc =
       Intrinsic::getDeclaration(F->getParent(), Intrinsic::aarch64_settag);
 
-  Instruction *Base =
+  Value *Base =
       insertBaseTaggedPointer(*Fn.getParent(), SInfo.AllocasToInstrument, DT);
 
   int NextTag = 0;

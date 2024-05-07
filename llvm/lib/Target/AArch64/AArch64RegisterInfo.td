@@ -231,6 +231,9 @@ def tcGPRx17 : RegisterClass<"AArch64", [i64], 64, (add X17)>;
 def tcGPRx16x17 : RegisterClass<"AArch64", [i64], 64, (add X16, X17)>;
 def tcGPRnotx16 : RegisterClass<"AArch64", [i64], 64, (sub tcGPR64, X16)>;
 
+def GPR64x9 : RegisterClass<"AArch64", [i64], 64, (add X9)>;
+def GPR64fp : RegisterClass<"AArch64", [i64], 64, (add FP)>;
+
 // Register set that excludes registers that are reserved for procedure calls.
 // This is used for pseudo-instructions that are actually implemented using a
 // procedure call.

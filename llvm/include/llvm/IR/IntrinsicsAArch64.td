@@ -12,6 +12,8 @@
 
 let TargetPrefix = "aarch64" in {
 
+def int_aarch64_mte_tag_stack : Intrinsic<[llvm_ptr_ty], [], []>;
+
 def int_aarch64_ldxr : Intrinsic<[llvm_i64_ty], [llvm_anyptr_ty],
                                  [IntrNoFree, IntrWillReturn]>;
 def int_aarch64_ldaxr : Intrinsic<[llvm_i64_ty], [llvm_anyptr_ty],
