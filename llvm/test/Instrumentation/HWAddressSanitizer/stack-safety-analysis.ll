@@ -12,7 +12,7 @@
 target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
 
 ; Check a safe alloca to ensure it does not get a tag.
-define i32 @test_simple(ptr %a) sanitize_hwaddress {
+define i32 @test_simple(ptr %a) sanitize_hwaddress !dbg !14 {
 entry:
   ; CHECK-LABEL: @test_simple
   ; NOSAFETY: call {{.*}}__hwasan_generate_tag
@@ -24,7 +24,7 @@ entry:
   ; SAFETY-REMARKS: --- !Passed{{[[:space:]]}}Pass: hwasan{{[[:space:]]}}Name: ignoreAccess{{[[:space:]]}}Function: test_simple
   %buf.sroa.0 = alloca i8, align 4
   call void @llvm.lifetime.start.p0(i64 1, ptr nonnull %buf.sroa.0)
-  store volatile i8 0, ptr %buf.sroa.0, align 4, !tbaa !8
+  store volatile i8 0, ptr %buf.sroa.0, align 4, !tbaa !8, !dbg !28
   call void @llvm.lifetime.end.p0(i64 1, ptr nonnull %buf.sroa.0)
   ret i32 0
 }
@@ -390,6 +390,17 @@ declare void @use(ptr nocapture)
 declare i32 @getoffset()
 declare ptr @getptr(ptr nocapture)
 declare ptr @retptr(ptr returned)
+
+!llvm.dbg.cu = !{!0}
+!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus_14, file: !1)
+!2 = !{}
+
+!1 = !DIFile(filename: "test.cc", directory: "/tmp")
+!14 = distinct !DISubprogram(name: "f", scope: !1, file: !1, line: 4, type: !15, scopeLine: 4, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0, retainedNodes: !2)
+!15 = !DISubroutineType(types: !16)
+!16 = !{null}
+
+!28 = !DILocation(line: 6, column: 3, scope: !14)
 
 !8 = !{!9, !9, i64 0}
 !9 = !{!"omnipotent char", !10, i64 0}
