@@ -591,6 +591,12 @@ void HWAddressSanitizer::createHwasanCtorComdat() {
   appendToCompilerUsed(M, Dummy);
 }
 
+static bool onlyReadsArgMemory(const Function &F) {
+  return F.onlyAccessesArgMemory() && llvm::all_of(F.args(), [](const auto &A) {
+           return A.onlyReadsMemory();
+  });
+}
+
 /// Module-level initialization.
 ///
 /// inserts a call to __hwasan_init to the module's constructor list.
@@ -610,8 +616,12 @@ void HWAddressSanitizer::initializeModule() {
 
     // nobuiltin makes sure later passes don't restore assumptions about
     // the function.
+    if (F.doesNotAccessMemory() || F.onlyReadsMemory() || onlyReadsArgMemory(F))
+      continue;
     F.addFnAttr(llvm::Attribute::NoBuiltin);
     F.removeFnAttr(llvm::Attribute::Memory);
+    // F.setMemoryEffects(F.getMemoryEffects() | MemoryEffects::writeOnly() |
+    // MemoryEffects::readOnly());
     for (auto &A : F.args())
       A.removeAttr(llvm::Attribute::WriteOnly);
   }
