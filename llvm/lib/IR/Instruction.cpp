@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/IR/Instruction.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/IR/AttributeMask.h"
 #include "llvm/IR/Attributes.h"
@@ -20,11 +21,34 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/MemoryModelRelaxationAnnotations.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/ProfDataUtils.h"
 #include "llvm/IR/Type.h"
+#include <llvm/Config/config.h>
+
+#define LLVM_TRACE_INSTRUCTIONS
+
+#ifdef LLVM_TRACE_INSTRUCTIONS
+#ifdef HAVE_BACKTRACE
+#include BACKTRACE_HEADER // For backtrace().
+#else
+#error "need unwinder for LLVM_TRACE_INSTRUCTIONS";
+#endif
+
+#if HAVE_DLFCN_H
+#include <dlfcn.h>
+#endif
+#endif
+
 using namespace llvm;
+
+static cl::opt<bool>
+    ClTraceInstructions("trace-instructions",
+                       cl::desc("instrument write instructions"), cl::Hidden,
+                       cl::init(false));
+
 
 InsertPosition::InsertPosition(Instruction *InsertBefore)
     : InsertAt(InsertBefore ? InsertBefore->getIterator()
@@ -41,6 +65,39 @@ Instruction::Instruction(Type *ty, unsigned it, AllocInfo AllocInfo,
     assert(BB && "Instruction to insert before is not in a basic block!");
     insertInto(BB, InsertBefore);
   }
+#ifdef LLVM_TRACE_INSTRUCTIONS
+if (ClTraceInstructions) {
+  static void *StackTrace[256];
+  int depth = 0;
+#if defined(HAVE_BACKTRACE)
+  // Use backtrace() to output a backtrace on Linux systems with glibc.
+  if (!depth)
+    depth = backtrace(StackTrace, static_cast<int>(std::size(StackTrace)));
+#endif
+  if (depth) {
+    SmallVector<llvm::Metadata *, 5> MDVals;
+    SmallVector<Metadata*, 5> MDArray;
+    // MDTuple* MDArray = MDTuple::getDistinct(getContext(), {});
+    for (int i = 0; i < depth; ++i) {
+      const char *DSO = "???";
+      uintptr_t Addr = reinterpret_cast<uintptr_t>(StackTrace[i]);
+#if HAVE_DLFCN_H && HAVE_DLADDR
+      Dl_info dlinfo;
+      if (dladdr(StackTrace[i], &dlinfo)) {
+        DSO = dlinfo.dli_fname;
+        Addr -= reinterpret_cast<uintptr_t>(dlinfo.dli_fbase);
+      }
+#endif
+      MDArray.push_back(llvm::MDTuple::get(
+          getContext(), {MDString::get(getContext(), DSO),
+                         ConstantAsMetadata::get(ConstantInt::get(
+                             getContext(), APInt(64, Addr)))}));
+    }
+    setMetadata(llvm::LLVMContext::MD_instruction_backtrace,
+                llvm::MDNode::get(getContext(), MDArray));
+  }
+}
+#endif
 }
 
 Instruction::~Instruction() {
