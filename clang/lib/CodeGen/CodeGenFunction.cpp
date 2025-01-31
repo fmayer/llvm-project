@@ -2723,6 +2723,16 @@ CodeGenFunction::SanitizerScope::~SanitizerScope() {
   CGF->IsSanitizerScope = false;
 }
 
+CodeGenFunction::BoundsSafeScope::BoundsSafeScope(CodeGenFunction *CGF)
+    : CGF(CGF) {
+  assert(!CGF->IsBoundsSafeScope);
+  CGF->IsBoundsSafeScope = true;
+}
+
+CodeGenFunction::BoundsSafeScope::~BoundsSafeScope() {
+  CGF->IsBoundsSafeScope = false;
+}
+
 void CodeGenFunction::InsertHelper(llvm::Instruction *I,
                                    const llvm::Twine &Name,
                                    llvm::BasicBlock::iterator InsertPt) const {

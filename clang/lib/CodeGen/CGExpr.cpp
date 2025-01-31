@@ -1193,6 +1193,8 @@ llvm::Value *CodeGenFunction::EmitLoadOfCountedByField(
 void CodeGenFunction::EmitBoundsCheck(const Expr *E, const Expr *Base,
                                       llvm::Value *Index, QualType IndexType,
                                       bool Accessed) {
+  if (IsBoundsSafeScope)
+    return;
   assert(SanOpts.has(SanitizerKind::ArrayBounds) &&
          "should not be called unless adding bounds checks");
   const LangOptions::StrictFlexArraysLevelKind StrictFlexArraysLevel =

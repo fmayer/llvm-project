@@ -18,6 +18,7 @@
 #include "clang/AST/Attr.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/Stmt.h"
+#include "clang/AST/StmtCXX.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/DiagnosticSema.h"
@@ -1369,13 +1370,16 @@ CodeGenFunction::EmitCXXForRangeStmt(const CXXForRangeStmt &S,
 
   LexicalScope ForScope(*this, S.getSourceRange());
 
-  // Evaluate the first pieces before the loop.
-  if (S.getInit())
-    EmitStmt(S.getInit());
-  EmitStmt(S.getRangeStmt());
-  EmitStmt(S.getBeginStmt());
-  EmitStmt(S.getEndStmt());
+  {
+    BoundsSafeScope x(this);
 
+    // Evaluate the first pieces before the loop.
+    if (S.getInit())
+      EmitStmt(S.getInit());
+    EmitStmt(S.getRangeStmt());
+    EmitStmt(S.getBeginStmt());
+    EmitStmt(S.getEndStmt());
+  }
   // Start the loop with a block that tests the condition.
   // If there's an increment, the continue scope will be overwritten
   // later.
@@ -1436,7 +1440,10 @@ CodeGenFunction::EmitCXXForRangeStmt(const CXXForRangeStmt &S,
   EmitStopPoint(&S);
   // If there is an increment, emit it next.
   EmitBlock(Continue.getBlock());
-  EmitStmt(S.getInc());
+  {
+    BoundsSafeScope x(this);
+    EmitStmt(S.getInc());
+  }
 
   BreakContinueStack.pop_back();
 

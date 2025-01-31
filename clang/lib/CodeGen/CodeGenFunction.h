@@ -582,6 +582,20 @@ public:
     ~SanitizerScope();
   };
 
+  // True if we statically know that array indices are within bounds for the
+  // current scope, e.g. in range-based for loops.
+  bool IsBoundsSafeScope = false;
+
+  /// RAII object to set/unset CodeGenFunction::IsBoundsSafeScope.
+
+  class BoundsSafeScope {
+    CodeGenFunction *CGF;
+
+  public:
+    BoundsSafeScope(CodeGenFunction *CGF);
+    ~BoundsSafeScope();
+  };
+
   /// In C++, whether we are code generating a thunk.  This controls whether we
   /// should emit cleanups.
   bool CurFuncIsThunk = false;
