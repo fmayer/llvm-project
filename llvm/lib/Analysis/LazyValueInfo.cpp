@@ -872,16 +872,21 @@ LazyValueInfoImpl::solveBlockValueSelect(SelectInst *SI, BasicBlock *BB) {
   Value *Cond = SI->getCondition();
   // If the value is undef, a different value may be chosen in
   // the select condition.
-  if (isGuaranteedNotToBeUndef(Cond, AC)) {
-    TrueVal =
-        TrueVal.intersect(*getValueFromCondition(SI->getTrueValue(), Cond,
-                                                 /*IsTrueDest*/ true,
-                                                 /*UseBlockValue*/ false));
-    FalseVal =
-        FalseVal.intersect(*getValueFromCondition(SI->getFalseValue(), Cond,
-                                                  /*IsTrueDest*/ false,
-                                                  /*UseBlockValue*/ false));
+  auto TrueCond = getValueFromCondition(SI->getTrueValue(), Cond,
+                                        /*IsTrueDest*/ true,
+                                        /*UseBlockValue*/ false);
+  auto FalseCond = getValueFromCondition(SI->getFalseValue(), Cond,
+                                         /*IsTrueDest*/ false,
+                                         /*UseBlockValue*/ false);
+  if (!isGuaranteedNotToBeUndef(Cond, AC)) {
+    ValueLatticeElement Undef;
+    Undef.markUndef();
+    auto MIU = ValueLatticeElement::MergeOptions().setMayIncludeUndef();
+    TrueCond->mergeIn(Undef, MIU);
+    FalseCond->mergeIn(Undef, MIU);
   }
+  TrueVal = TrueVal.intersect(*TrueCond);
+  FalseVal = FalseVal.intersect(*FalseCond);
 
   ValueLatticeElement Result = TrueVal;
   Result.mergeIn(FalseVal);
