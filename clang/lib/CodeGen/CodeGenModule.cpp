@@ -53,8 +53,10 @@
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/IR/AttributeMask.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -81,6 +83,10 @@ using namespace CodeGen;
 static llvm::cl::opt<bool> LimitedCoverage(
     "limited-coverage-experimental", llvm::cl::Hidden,
     llvm::cl::desc("Emit limited coverage mapping information (experimental)"));
+
+static llvm::cl::opt<bool> ExperimentalKCFIABI(
+    "kcfi-abi-experimental", llvm::cl::Hidden,
+    llvm::cl::desc("Use experimental, unstable userspace KCFI ABI."));
 
 static const char AnnotationSection[] = "llvm.metadata";
 
@@ -3034,16 +3040,39 @@ void CodeGenModule::finalizeKCFITypes() {
     if (!AddressTaken && F.hasLocalLinkage())
       F.eraseMetadata(llvm::LLVMContext::MD_kcfi_type);
 
+    const llvm::ConstantInt *Type;
+    llvm::MDNode *MD = F.getMetadata(llvm::LLVMContext::MD_kcfi_type);
+    if (MD)
+      Type = llvm::mdconst::extract<llvm::ConstantInt>(MD->getOperand(0));
+    else
+      continue;
+
+    if (ExperimentalKCFIABI) {
+      if (AddressTaken && F.isDeclaration()) {
+        auto *Tramp = llvm::Function::Create(F.getFunctionType(),
+                                             llvm::GlobalValue::WeakAnyLinkage,
+                                             "kcfi." + F.getName(), &M);
+
+        F.replaceAllUsesWith(Tramp);
+        // Tramp->setMetadata(llvm::LLVMContext::MD_kcfi_type, MD);
+        auto *BB = llvm::BasicBlock::Create(getLLVMContext(), "entry", Tramp);
+        llvm::IRBuilder<> IRB(BB);
+        SmallVector<llvm::Value *, 5> Args;
+        for (auto &A : Tramp->args()) {
+          Args.push_back(&A);
+        }
+        Tramp->setMetadata(llvm::LLVMContext::MD_kcfi_type, MD);
+
+        IRB.CreateRet(IRB.CreateCall(&F, Args));
+        // F.setName("kcfi." + F.getName());
+      }
+      if (!F.isDeclaration())
+        llvm::GlobalAlias::create("kcfi." + F.getName(), &F);
+    }
     // Generate a constant with the expected KCFI type identifier for all
     // address-taken function declarations to support annotating indirectly
     // called assembly functions.
     if (!AddressTaken || !F.isDeclaration())
-      continue;
-
-    const llvm::ConstantInt *Type;
-    if (const llvm::MDNode *MD = F.getMetadata(llvm::LLVMContext::MD_kcfi_type))
-      Type = llvm::mdconst::extract<llvm::ConstantInt>(MD->getOperand(0));
-    else
       continue;
 
     StringRef Name = F.getName();
