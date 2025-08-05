@@ -59,6 +59,9 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalIFunc.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instruction.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -1006,8 +1009,6 @@ void CodeGenModule::Release() {
   llvm::stable_sort(GlobalCtors, [](const Structor &L, const Structor &R) {
     return L.LexOrder < R.LexOrder;
   });
-  EmitCtorList(GlobalCtors, "llvm.global_ctors");
-  EmitCtorList(GlobalDtors, "llvm.global_dtors");
   EmitGlobalAnnotations();
   EmitStaticExternCAliases();
   checkAliases();
@@ -1022,6 +1023,9 @@ void CodeGenModule::Release() {
   }
   if (LangOpts.Sanitize.has(SanitizerKind::KCFI))
     finalizeKCFITypes();
+
+  EmitCtorList(GlobalCtors, "llvm.global_ctors");
+  EmitCtorList(GlobalDtors, "llvm.global_dtors");
   emitAtAvailableLinkGuard();
   if (Context.getTargetInfo().getTriple().isWasm())
     EmitMainVoidAlias();
@@ -3051,22 +3055,20 @@ void CodeGenModule::finalizeKCFITypes() {
 
     if (ExperimentalKCFIABI && !F.getName().starts_with("kcfi_impl.") &&
         !F.getName().starts_with("kcfi.")) {
-      if (AddressTaken && F.isDeclaration()) {
+      if (!F.isDeclaration()) {
+        llvm::GlobalAlias::create("kcfi." + F.getName(), &F);
+      } else if (AddressTaken) {
         std::string Name;
-        bool IsWeak = F.hasWeakLinkage() || F.hasExternalWeakLinkage();
-        if (IsWeak) {
-          Name = ("kcfi_impl." + F.getName()).str();
-        } else {
-          Name = ("kcfi." + F.getName()).str();
-        }
+        bool IsWeak = F.hasExternalWeakLinkage();
+        Name = ((IsWeak ? "kcfi_impl." : "kcfi.") + F.getName()).str();
         auto *Tramp = llvm::Function::Create(
             F.getFunctionType(), llvm::GlobalValue::WeakAnyLinkage, Name, &M);
 
         if (!IsWeak)
           F.replaceAllUsesWith(Tramp);
-        // Tramp->setMetadata(llvm::LLVMContext::MD_kcfi_type, MD);
-        auto *BB = llvm::BasicBlock::Create(getLLVMContext(), "entry", Tramp);
-        llvm::IRBuilder<> IRB(BB);
+        auto *TrampBB =
+            llvm::BasicBlock::Create(getLLVMContext(), "entry", Tramp);
+        llvm::IRBuilder<> IRB(TrampBB);
         SmallVector<llvm::Value *, 5> Args;
         for (auto &A : Tramp->args()) {
           Args.push_back(&A);
@@ -3079,36 +3081,41 @@ void CodeGenModule::finalizeKCFITypes() {
           IRB.CreateRet(Call);
         }
         if (IsWeak) {
-          /// TODO correct linkage
-          auto *Resolver = llvm::Function::Create(
-              llvm::FunctionType::get(
-                  llvm::PointerType::get(getLLVMContext(), F.getAddressSpace()),
-                  false),
-              llvm::GlobalValue::LinkOnceAnyLinkage, "kcfi_resolver." + F.getName(),
-              &M);
-          auto *BB =
-              llvm::BasicBlock::Create(getLLVMContext(), "entry", Resolver);
-          llvm::IRBuilder<> IRB(BB);
-          auto *IsNull =
-              IRB.CreateICmpEQ(&F, llvm::Constant::getNullValue(F.getType()));
-          auto *V = IRB.CreateSelect(
-              IsNull, llvm::Constant::getNullValue(Resolver->getReturnType()),
-              Tramp);
-          IRB.CreateRet(V);
+          auto *Ptr =
+              llvm::PointerType::get(getLLVMContext(), F.getAddressSpace());
+          auto *Nullptr = llvm::Constant::getNullValue(Ptr);
 
-          /// TODO correct linkage[]
-          auto *IFunc =
-              llvm::GlobalIFunc::create(F.getType(), F.getAddressSpace(),
-                                        llvm::GlobalValue::LinkOnceAnyLinkage,
-                                        "kcfi." + F.getName(), Resolver, &M);
-          F.replaceUsesWithIf(IFunc, [=](const auto &U) -> bool {
-            return U.getUser() != Call && U.getUser() != IsNull;
-          });
+          auto *Addr = new llvm::GlobalVariable(
+              M, Ptr, false, llvm::GlobalValue::LinkOnceAnyLinkage, Nullptr);
+          Addr->setName("kcfi_addr." + F.getName());
+
+          auto *AddrInit = llvm::Function::Create(
+              llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),
+                                      false),
+              llvm::GlobalValue::LinkOnceAnyLinkage, "kcfi_init." + F.getName(),
+              &M);
+          AddrInit->setSection(".text.startup");
+          auto *BB =
+              llvm::BasicBlock::Create(getLLVMContext(), "entry", AddrInit);
+          llvm::IRBuilder<> IRB(BB);
+          auto *IsNull = IRB.CreateICmpEQ(&F, Nullptr);
+          auto *V = IRB.CreateSelect(IsNull, Nullptr, Tramp);
+          IRB.CreateStore(V, Addr);
+          IRB.CreateRetVoid();
+          AddGlobalCtor(AddrInit, 1);
+          for (llvm::Use &U : llvm::make_early_inc_range(F.uses())) {
+            if (llvm::Instruction *I =
+                    dyn_cast<llvm::Instruction>(U.getUser())) {
+              if (I->getParent() == BB || I->getParent() == TrampBB)
+                continue;
+              llvm::IRBuilder<> UIRB(I);
+              auto *L = UIRB.CreateLoad(Ptr, Addr);
+              U.set(L);
+            }
+          }
         }
         // F.setName("kcfi." + F.getName());
       }
-      if (!F.isDeclaration())
-        llvm::GlobalAlias::create("kcfi." + F.getName(), &F);
     }
     // Generate a constant with the expected KCFI type identifier for all
     // address-taken function declarations to support annotating indirectly

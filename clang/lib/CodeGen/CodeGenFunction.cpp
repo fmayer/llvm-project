@@ -57,6 +57,8 @@ using namespace CodeGen;
 namespace llvm {
 extern cl::opt<bool> EnableSingleByteCoverage;
 } // namespace llvm
+static llvm::cl::opt<bool> KCFINoCheck("kcfi-no-check", llvm::cl::desc(""),
+                                       llvm::cl::init(false), llvm::cl::Hidden);
 
 /// shouldEmitLifetimeMarkers - Decide whether we need emit the life-time
 /// markers.
@@ -2905,6 +2907,8 @@ void CodeGenFunction::EmitSanitizerStatReport(llvm::SanitizerStatKind SSK) {
 
 void CodeGenFunction::EmitKCFIOperandBundle(
     const CGCallee &Callee, SmallVectorImpl<llvm::OperandBundleDef> &Bundles) {
+  if (KCFINoCheck)
+    return;
   const FunctionProtoType *FP =
       Callee.getAbstractInfo().getCalleeFunctionProtoType();
   if (FP)
